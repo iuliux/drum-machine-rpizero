@@ -10,6 +10,14 @@ import time
 import threading
 import random
 from pathlib import Path
+try:
+    import board
+    import busio
+    import adafruit_mpr121
+    MPR121_AVAILABLE = True
+except (ImportError, NotImplementedError):
+    MPR121_AVAILABLE = False
+    print("Warning: MPR121 libraries not available, running without touch sensors")
 
 # Audio configuration
 SAMPLE_RATE = 44100
@@ -20,6 +28,10 @@ NUM_STEPS = 8
 AUDIO_BASE_PATH = Path(__file__).parent / "audio"  # Folder with samples
 INSTRUMENT_NAMES = ['kick', 'snare', 'hihat']
 NUM_INSTRUMENTS = len(INSTRUMENT_NAMES)
+
+# MPR121 configuration
+MPR121_ADDR_1 = 0x5A  # First MPR121 - handles kick (8 pads) + snare (4 pads)
+MPR121_ADDR_2 = 0x5B  # Second MPR121 - handles snare (4 pads) + hihat (8 pads)
 
 class DrumSample:
     """Represents a single drum sample"""
@@ -56,6 +68,93 @@ class DrumSample:
             print(f"Error loading {self.filepath}: {e}")
             # Create silent fallback
             self.data = np.zeros(1000, dtype=np.float32)
+
+
+class TouchHandler:
+    """Handles MPR121 capacitive touch sensors"""
+    def __init__(self, sequencer):
+        self.sequencer = sequencer
+        self.mpr121_1 = None
+        self.mpr121_2 = None
+        self.last_touched_1 = 0
+        self.last_touched_2 = 0
+        
+        if not MPR121_AVAILABLE:
+            print("Touch sensors disabled - MPR121 library not available")
+            return
+        
+        try:
+            # Initialize I2C
+            i2c = busio.I2C(board.SCL, board.SDA)
+            
+            # Initialize both MPR121 sensors
+            self.mpr121_1 = adafruit_mpr121.MPR121(i2c, address=MPR121_ADDR_1)
+            self.mpr121_2 = adafruit_mpr121.MPR121(i2c, address=MPR121_ADDR_2)
+            
+            print(f"MPR121 sensors initialized at 0x{MPR121_ADDR_1:02X} and 0x{MPR121_ADDR_2:02X}")
+            
+        except Exception as e:
+            print(f"Error initializing MPR121: {e}")
+            self.mpr121_1 = None
+            self.mpr121_2 = None
+    
+    def map_touch_to_pattern(self, sensor_num, pad_num):
+        """
+        Map touch sensor and pad number to instrument and step.
+        
+        Layout:
+        Sensor 1 (0x5A):
+          Pads 0-7: Kick steps 0-7
+          Pads 8-11: Snare steps 0-3
+        Sensor 2 (0x5B):
+          Pads 0-3: Snare steps 4-7
+          Pads 4-11: Hihat steps 0-7
+        """
+        if sensor_num == 1:
+            if pad_num < 8:
+                # Kick
+                return 0, pad_num
+            else:
+                # Snare (first 4 steps)
+                return 1, pad_num - 8
+        else:  # sensor_num == 2
+            if pad_num < 4:
+                # Snare (last 4 steps)
+                return 1, pad_num + 4
+            else:
+                # Hihat
+                return 2, pad_num - 4
+    
+    def poll(self):
+        """Poll touch sensors and toggle steps on new touches"""
+        if self.mpr121_1 is None or self.mpr121_2 is None:
+            return
+        
+        try:
+            # Read current touch state
+            touched_1 = self.mpr121_1.touched()
+            touched_2 = self.mpr121_2.touched()
+            
+            # Detect new touches on sensor 1
+            new_touches_1 = touched_1 & ~self.last_touched_1
+            for i in range(12):
+                if new_touches_1 & (1 << i):
+                    instrument, step = self.map_touch_to_pattern(1, i)
+                    self.sequencer.toggle_step(instrument, step)
+            
+            # Detect new touches on sensor 2
+            new_touches_2 = touched_2 & ~self.last_touched_2
+            for i in range(12):
+                if new_touches_2 & (1 << i):
+                    instrument, step = self.map_touch_to_pattern(2, i)
+                    self.sequencer.toggle_step(instrument, step)
+            
+            # Update last touched state
+            self.last_touched_1 = touched_1
+            self.last_touched_2 = touched_2
+            
+        except Exception as e:
+            print(f"Error polling touch sensors: {e}")
 
 
 class Sequencer:
@@ -245,11 +344,13 @@ def main():
     # Create sequencer
     seq = Sequencer(bpm=120)
     
-    # Set up a simple test pattern
+    # Initialize touch handler
+    touch = TouchHandler(seq)
+    
+    # Set up a simple test pattern (for testing without touch sensors)
     # Kick on steps 0, 4
     seq.toggle_step(0, 0)
     seq.toggle_step(0, 4)
-    seq.toggle_step(0, 6)
     # Snare on steps 2, 6
     seq.toggle_step(1, 2)
     seq.toggle_step(1, 6)
@@ -260,9 +361,14 @@ def main():
     # Start playback
     seq.start()
     
-    # Run for 10 seconds
+    print("\nSequencer running. Touch pads to toggle steps.")
+    print("Press Ctrl+C to stop.\n")
+    
+    # Main loop - poll touch sensors
     try:
-        time.sleep(10)
+        while True:
+            touch.poll()
+            time.sleep(0.01)  # Poll at 100Hz
     except KeyboardInterrupt:
         print("\nStopping...")
     finally:
