@@ -26,6 +26,13 @@ except (ImportError, NotImplementedError):
     NEOPIXEL_AVAILABLE = False
     print("Warning: NeoPixel library not available, running without LEDs")
 
+try:
+    import RPi.GPIO as GPIO
+    GPIO_AVAILABLE = True
+except (ImportError, RuntimeError):
+    GPIO_AVAILABLE = False
+    print("Warning: RPi.GPIO not available, running without rotary encoder")
+
 # Audio configuration
 SAMPLE_RATE = 44100
 BLOCK_SIZE = 512  # Buffer size for low latency
@@ -41,9 +48,14 @@ MPR121_ADDR_1 = 0x5A  # First MPR121 - handles kick (8 pads) + snare (4 pads)
 MPR121_ADDR_2 = 0x5B  # Second MPR121 - handles snare (4 pads) + hihat (8 pads)
 
 # NeoPixel configuration
-NEOPIXEL_PIN = board.D18 if NEOPIXEL_AVAILABLE else None  # GPIO 18 (PWM capable)
+NEOPIXEL_PIN = board.D12 if NEOPIXEL_AVAILABLE else None  # GPIO 12 (PWM0 - alternative)
 NUM_PIXELS = 24  # 8 LEDs per instrument × 3 instruments
 PIXEL_BRIGHTNESS = 0.3  # 0.0 to 1.0
+
+# Rotary Encoder configuration
+ENCODER_CLK_PIN = 17  # GPIO 17 for CLK (A pin)
+ENCODER_DT_PIN = 27   # GPIO 27 for DT (B pin)
+ENCODER_SW_PIN = 22   # GPIO 22 for switch (optional)
 
 # Color scheme for instruments
 COLORS = {
@@ -88,6 +100,91 @@ class DrumSample:
             print(f"Error loading {self.filepath}: {e}")
             # Create silent fallback
             self.data = np.zeros(1000, dtype=np.float32)
+
+
+class RotaryEncoder:
+    """Handles quadrature rotary encoder for BPM control"""
+    def __init__(self, sequencer, clk_pin=ENCODER_CLK_PIN, dt_pin=ENCODER_DT_PIN, sw_pin=ENCODER_SW_PIN):
+        self.sequencer = sequencer
+        self.clk_pin = clk_pin
+        self.dt_pin = dt_pin
+        self.sw_pin = sw_pin
+        
+        self.clk_last_state = None
+        self.bpm_step = 1  # BPM change per detent
+        
+        if not GPIO_AVAILABLE:
+            print("Rotary encoder disabled - RPi.GPIO not available")
+            return
+        
+        try:
+            # Set up GPIO
+            GPIO.setmode(GPIO.BCM)
+            GPIO.setup(self.clk_pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+            GPIO.setup(self.dt_pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+            
+            if self.sw_pin:
+                GPIO.setup(self.sw_pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+                # Add interrupt for button press
+                GPIO.add_event_detect(self.sw_pin, GPIO.FALLING, 
+                                     callback=self.button_pressed, bouncetime=200)
+            
+            # Store initial state
+            self.clk_last_state = GPIO.input(self.clk_pin)
+            
+            # Add interrupt for rotation
+            GPIO.add_event_detect(self.clk_pin, GPIO.BOTH, 
+                                 callback=self.rotary_changed, bouncetime=5)
+            
+            print(f"Rotary encoder initialized on GPIO {clk_pin}/{dt_pin}")
+            
+        except Exception as e:
+            print(f"Error initializing rotary encoder: {e}")
+    
+    def rotary_changed(self, channel):
+        """Interrupt handler for rotary encoder rotation"""
+        try:
+            clk_state = GPIO.input(self.clk_pin)
+            dt_state = GPIO.input(self.dt_pin)
+            
+            # Only process on rising edge of CLK
+            if clk_state != self.clk_last_state and clk_state == 1:
+                if dt_state != clk_state:
+                    # Clockwise rotation - increase BPM
+                    new_bpm = self.sequencer.bpm + self.bpm_step
+                    self.sequencer.set_bpm(new_bpm)
+                else:
+                    # Counter-clockwise rotation - decrease BPM
+                    new_bpm = self.sequencer.bpm - self.bpm_step
+                    self.sequencer.set_bpm(new_bpm)
+            
+            self.clk_last_state = clk_state
+            
+        except Exception as e:
+            print(f"Error in rotary encoder callback: {e}")
+    
+    def button_pressed(self, channel):
+        """Interrupt handler for encoder button press"""
+        try:
+            # Toggle play/stop on button press
+            if self.sequencer.is_playing:
+                print("Button: Stop")
+                self.sequencer.stop()
+            else:
+                print("Button: Start")
+                self.sequencer.start()
+        except Exception as e:
+            print(f"Error in button callback: {e}")
+    
+    def cleanup(self):
+        """Clean up GPIO resources"""
+        if GPIO_AVAILABLE:
+            try:
+                GPIO.cleanup([self.clk_pin, self.dt_pin])
+                if self.sw_pin:
+                    GPIO.cleanup(self.sw_pin)
+            except:
+                pass
 
 
 class LEDHandler:
@@ -427,9 +524,21 @@ class Sequencer:
     def stop(self):
         """Stop playback"""
         self.is_playing = False
+        
+        # Wait for sequencer thread to finish
+        if hasattr(self, 'seq_thread') and self.seq_thread.is_alive():
+            self.seq_thread.join(timeout=1.0)
+        
+        # Stop and close audio stream
         if self.stream:
-            self.stream.stop()
-            self.stream.close()
+            try:
+                if self.stream.active:
+                    self.stream.stop()
+                self.stream.close()
+                self.stream = None
+            except Exception as e:
+                print(f"Error stopping audio stream: {e}")
+        
         print("Sequencer stopped")
 
 
@@ -447,6 +556,9 @@ def main():
     # Initialize LED handler
     leds = LEDHandler(seq)
     
+    # Initialize rotary encoder
+    encoder = RotaryEncoder(seq)
+    
     # Set up a simple test pattern (for testing without touch sensors)
     # Kick on steps 0, 4
     seq.toggle_step(0, 0)
@@ -461,8 +573,11 @@ def main():
     # Start playback
     seq.start()
     
-    print("\nSequencer running. Touch pads to toggle steps.")
-    print("LEDs show: Red=Kick, Green=Snare, Blue=Hihat, White=Current step")
+    print("\nSequencer running.")
+    print("- Touch pads to toggle steps")
+    print("- Rotate encoder to change BPM")
+    print("- Press encoder button to start/stop")
+    print("- LEDs: Red=Kick, Green=Snare, Blue=Hihat, White=Current step")
     print("Press Ctrl+C to stop.\n")
     
     # Main loop - poll touch sensors and update LEDs
@@ -473,12 +588,29 @@ def main():
             time.sleep(0.01)  # Poll at 100Hz
     except KeyboardInterrupt:
         print("\nStopping...")
+    except Exception as e:
+        print(f"\nError in main loop: {e}")
     finally:
-        seq.stop()
+        # Ensure cleanup happens
+        try:
+            seq.stop()
+        except:
+            pass
+        
+        try:
+            encoder.cleanup()
+        except:
+            pass
+        
         # Turn off LEDs
-        if leds.pixels:
-            leds.pixels.fill((0, 0, 0))
-            leds.pixels.show()
+        try:
+            if leds.pixels:
+                leds.pixels.fill((0, 0, 0))
+                leds.pixels.show()
+        except:
+            pass
+        
+        print("Cleanup complete")
 
 
 if __name__ == "__main__":
