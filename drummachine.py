@@ -5,8 +5,10 @@ Simple 8-step, 3-instrument drum machine sequencer for Raspberry Pi Zero 2 W
 
 import numpy as np
 import sounddevice as sd
+import soundfile as sf
 import time
 import threading
+import random
 from pathlib import Path
 
 # Audio configuration
@@ -15,8 +17,9 @@ BLOCK_SIZE = 512  # Buffer size for low latency
 
 # Sequencer configuration
 NUM_STEPS = 8
-NUM_INSTRUMENTS = 3
+AUDIO_BASE_PATH = Path(__file__).parent / "audio"  # Folder with samples
 INSTRUMENT_NAMES = ['kick', 'snare', 'hihat']
+NUM_INSTRUMENTS = len(INSTRUMENT_NAMES)
 
 class DrumSample:
     """Represents a single drum sample"""
@@ -27,18 +30,32 @@ class DrumSample:
     
     def load(self):
         """Load WAV file into numpy array"""
-        # TODO: Load actual WAV file
-        # For now, create a simple sine wave as placeholder
-        duration = 0.3  # 300ms sample
-        samples = int(SAMPLE_RATE * duration)
-        t = np.linspace(0, duration, samples)
-        # Different frequencies for different drums
-        freq = 60 if 'kick' in str(self.filepath) else (200 if 'snare' in str(self.filepath) else 8000)
-        self.data = np.sin(2 * np.pi * freq * t) * 0.3
-        # Apply envelope
-        envelope = np.exp(-t * 10)
-        self.data = self.data * envelope
-        self.data = self.data.astype(np.float32)
+        try:
+            data, samplerate = sf.read(self.filepath, dtype='float32')
+            
+            # Resample if needed (basic approach)
+            if samplerate != SAMPLE_RATE:
+                print(f"Warning: {self.filepath.name} is {samplerate}Hz, expected {SAMPLE_RATE}Hz")
+                # Simple resampling - for production use scipy.signal.resample
+                ratio = SAMPLE_RATE / samplerate
+                new_length = int(len(data) * ratio)
+                data = np.interp(
+                    np.linspace(0, len(data), new_length),
+                    np.arange(len(data)),
+                    data if data.ndim == 1 else data[:, 0]
+                )
+            
+            # Convert stereo to mono if needed
+            if data.ndim == 2:
+                data = np.mean(data, axis=1)
+            
+            self.data = data.astype(np.float32)
+            print(f"Loaded: {self.filepath.name} ({len(self.data)} samples)")
+            
+        except Exception as e:
+            print(f"Error loading {self.filepath}: {e}")
+            # Create silent fallback
+            self.data = np.zeros(1000, dtype=np.float32)
 
 
 class Sequencer:
@@ -48,7 +65,7 @@ class Sequencer:
         self.current_step = 0
         self.pattern = np.zeros((NUM_INSTRUMENTS, NUM_STEPS), dtype=bool)
         self.is_playing = False
-        self.samples = {}
+        self.sample_banks = {}  # Dictionary of lists of samples per instrument
         self.active_voices = []  # List of currently playing samples
         self.lock = threading.Lock()
         
@@ -59,11 +76,57 @@ class Sequencer:
         self.stream = None
         
     def load_samples(self):
-        """Load drum samples from files"""
-        # TODO: Load from actual files in /home/pi/samples/
-        for name in INSTRUMENT_NAMES:
-            self.samples[name] = DrumSample(f"{name}.wav")
-        print(f"Loaded {len(self.samples)} samples")
+        """Load drum samples from audio folder structure"""
+        if not AUDIO_BASE_PATH.exists():
+            print(f"Warning: Audio path {AUDIO_BASE_PATH} does not exist!")
+            print("Creating placeholder samples...")
+            # Create placeholder samples if no audio folder
+            for name in INSTRUMENT_NAMES:
+                self.sample_banks[name] = [self._create_placeholder_sample(name)]
+            return
+        
+        for instrument_name in INSTRUMENT_NAMES:
+            instrument_path = AUDIO_BASE_PATH / instrument_name
+            
+            if not instrument_path.exists():
+                print(f"Warning: {instrument_path} not found, using placeholder")
+                self.sample_banks[instrument_name] = [self._create_placeholder_sample(instrument_name)]
+                continue
+            
+            # Find all .wav files in this instrument folder
+            wav_files = list(instrument_path.glob("*.wav"))
+            
+            if not wav_files:
+                print(f"Warning: No .wav files found in {instrument_path}")
+                self.sample_banks[instrument_name] = [self._create_placeholder_sample(instrument_name)]
+                continue
+            
+            # Load all samples for this instrument
+            samples = []
+            for wav_file in wav_files:
+                sample = DrumSample(wav_file)
+                if sample.data is not None:
+                    samples.append(sample)
+            
+            self.sample_banks[instrument_name] = samples
+            print(f"{instrument_name}: loaded {len(samples)} samples")
+    
+    def _create_placeholder_sample(self, instrument_name):
+        """Create a simple beep as placeholder"""
+        duration = 0.2
+        samples = int(SAMPLE_RATE * duration)
+        t = np.linspace(0, duration, samples)
+        freq = {'kick': 60, 'snare': 200, 'hihat': 8000}.get(instrument_name, 440)
+        data = np.sin(2 * np.pi * freq * t) * 0.3
+        envelope = np.exp(-t * 10)
+        data = (data * envelope).astype(np.float32)
+        
+        # Create a minimal DrumSample-like object
+        class PlaceholderSample:
+            def __init__(self, data):
+                self.data = data
+        
+        return PlaceholderSample(data)
     
     def toggle_step(self, instrument_idx, step_idx):
         """Toggle a step on/off for a given instrument"""
@@ -82,12 +145,15 @@ class Sequencer:
         with self.lock:
             for inst_idx, instrument_name in enumerate(INSTRUMENT_NAMES):
                 if self.pattern[inst_idx, step]:
+                    # Randomly select a sample from this instrument's bank
+                    sample_bank = self.sample_banks[instrument_name]
+                    selected_sample = random.choice(sample_bank)
+                    
                     # Add sample to active voices with position counter
-                    sample_data = self.samples[instrument_name].data.copy()
                     self.active_voices.append({
-                        'data': sample_data,
+                        'data': selected_sample.data.copy(),
                         'position': 0,
-                        'length': len(sample_data)
+                        'length': len(selected_sample.data)
                     })
     
     def audio_callback(self, outdata, frames, time_info, status):
@@ -183,12 +249,13 @@ def main():
     # Kick on steps 0, 4
     seq.toggle_step(0, 0)
     seq.toggle_step(0, 4)
+    seq.toggle_step(0, 6)
     # Snare on steps 2, 6
     seq.toggle_step(1, 2)
     seq.toggle_step(1, 6)
     # Hi-hat on all steps
-    # for i in range(8):
-    #     seq.toggle_step(2, i)
+    for i in range(8):
+        seq.toggle_step(2, i)
     
     # Start playback
     seq.start()
