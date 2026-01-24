@@ -19,6 +19,13 @@ except (ImportError, NotImplementedError):
     MPR121_AVAILABLE = False
     print("Warning: MPR121 libraries not available, running without touch sensors")
 
+try:
+    import neopixel
+    NEOPIXEL_AVAILABLE = True
+except (ImportError, NotImplementedError):
+    NEOPIXEL_AVAILABLE = False
+    print("Warning: NeoPixel library not available, running without LEDs")
+
 # Audio configuration
 SAMPLE_RATE = 44100
 BLOCK_SIZE = 512  # Buffer size for low latency
@@ -32,6 +39,19 @@ NUM_INSTRUMENTS = len(INSTRUMENT_NAMES)
 # MPR121 configuration
 MPR121_ADDR_1 = 0x5A  # First MPR121 - handles kick (8 pads) + snare (4 pads)
 MPR121_ADDR_2 = 0x5B  # Second MPR121 - handles snare (4 pads) + hihat (8 pads)
+
+# NeoPixel configuration
+NEOPIXEL_PIN = board.D18 if NEOPIXEL_AVAILABLE else None  # GPIO 18 (PWM capable)
+NUM_PIXELS = 24  # 8 LEDs per instrument × 3 instruments
+PIXEL_BRIGHTNESS = 0.3  # 0.0 to 1.0
+
+# Color scheme for instruments
+COLORS = {
+    'kick': (255, 0, 0),      # Red
+    'snare': (0, 255, 0),     # Green
+    'hihat': (0, 100, 255),   # Blue
+    'current': (255, 255, 255)  # White for current step indicator
+}
 
 class DrumSample:
     """Represents a single drum sample"""
@@ -68,6 +88,83 @@ class DrumSample:
             print(f"Error loading {self.filepath}: {e}")
             # Create silent fallback
             self.data = np.zeros(1000, dtype=np.float32)
+
+
+class LEDHandler:
+    """Handles WS2812B NeoPixel LED strip display"""
+    def __init__(self, sequencer):
+        self.sequencer = sequencer
+        self.pixels = None
+        
+        if not NEOPIXEL_AVAILABLE:
+            print("LEDs disabled - NeoPixel library not available")
+            return
+        
+        try:
+            # Initialize NeoPixel strip
+            self.pixels = neopixel.NeoPixel(
+                NEOPIXEL_PIN,
+                NUM_PIXELS,
+                brightness=PIXEL_BRIGHTNESS,
+                auto_write=False,
+                pixel_order=neopixel.GRB
+            )
+            
+            # Clear all pixels
+            self.pixels.fill((0, 0, 0))
+            self.pixels.show()
+            
+            print(f"NeoPixel strip initialized: {NUM_PIXELS} LEDs on pin {NEOPIXEL_PIN}")
+            
+        except Exception as e:
+            print(f"Error initializing NeoPixels: {e}")
+            self.pixels = None
+    
+    def get_pixel_index(self, instrument_idx, step_idx):
+        """
+        Map instrument and step to LED index.
+        Layout: [Kick 0-7][Snare 0-7][Hihat 0-7]
+        """
+        return instrument_idx * NUM_STEPS + step_idx
+    
+    def update(self):
+        """Update LED strip to reflect current pattern and step"""
+        if self.pixels is None:
+            return
+        
+        try:
+            current_step = self.sequencer.current_step
+            
+            for inst_idx, instrument_name in enumerate(INSTRUMENT_NAMES):
+                base_color = COLORS[instrument_name]
+                
+                for step_idx in range(NUM_STEPS):
+                    pixel_idx = self.get_pixel_index(inst_idx, step_idx)
+                    
+                    # Check if this step is active in the pattern
+                    is_active = self.sequencer.pattern[inst_idx, step_idx]
+                    
+                    # Check if this is the current playing step
+                    is_current = (step_idx == current_step) and self.sequencer.is_playing
+                    
+                    if is_current and is_active:
+                        # Current step that's active: full brightness white
+                        self.pixels[pixel_idx] = COLORS['current']
+                    elif is_current:
+                        # Current step but inactive: dim white
+                        self.pixels[pixel_idx] = (50, 50, 50)
+                    elif is_active:
+                        # Active step: instrument color at medium brightness
+                        self.pixels[pixel_idx] = base_color
+                    else:
+                        # Inactive step: very dim instrument color
+                        dim_factor = 0.05
+                        self.pixels[pixel_idx] = tuple(int(c * dim_factor) for c in base_color)
+            
+            self.pixels.show()
+            
+        except Exception as e:
+            print(f"Error updating LEDs: {e}")
 
 
 class TouchHandler:
@@ -347,6 +444,9 @@ def main():
     # Initialize touch handler
     touch = TouchHandler(seq)
     
+    # Initialize LED handler
+    leds = LEDHandler(seq)
+    
     # Set up a simple test pattern (for testing without touch sensors)
     # Kick on steps 0, 4
     seq.toggle_step(0, 0)
@@ -362,17 +462,23 @@ def main():
     seq.start()
     
     print("\nSequencer running. Touch pads to toggle steps.")
+    print("LEDs show: Red=Kick, Green=Snare, Blue=Hihat, White=Current step")
     print("Press Ctrl+C to stop.\n")
     
-    # Main loop - poll touch sensors
+    # Main loop - poll touch sensors and update LEDs
     try:
         while True:
             touch.poll()
+            leds.update()
             time.sleep(0.01)  # Poll at 100Hz
     except KeyboardInterrupt:
         print("\nStopping...")
     finally:
         seq.stop()
+        # Turn off LEDs
+        if leds.pixels:
+            leds.pixels.fill((0, 0, 0))
+            leds.pixels.show()
 
 
 if __name__ == "__main__":
