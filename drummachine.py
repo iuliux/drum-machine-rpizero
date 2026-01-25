@@ -344,18 +344,25 @@ class OLEDHandler:
             serial = i2c(port=1, address=OLED_I2C_ADDR)
             self.device = ssd1306(serial, width=OLED_WIDTH, height=OLED_HEIGHT)
             
-            # Try to load fonts (these are standard PIL fonts)
+            # Try to load fonts - aim for bold, chunky look like Arduino u8g2
             try:
-                # Large font for BPM number
-                self.font_large = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 28)
+                # Try FreeSans Bold first (similar to logisoso)
+                self.font_large = ImageFont.truetype("/usr/share/fonts/truetype/freefont/FreeSansBold.ttf", 32)
             except:
-                self.font_large = ImageFont.load_default()
+                try:
+                    # Fallback to DejaVu Sans Bold
+                    self.font_large = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 32)
+                except:
+                    self.font_large = ImageFont.load_default()
             
             try:
-                # Small font for text
-                self.font_small = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 10)
+                # Small font - try to get something condensed and bold
+                self.font_small = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSansCondensed-Bold.ttf", 11)
             except:
-                self.font_small = ImageFont.load_default()
+                try:
+                    self.font_small = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 11)
+                except:
+                    self.font_small = ImageFont.load_default()
             
             # Clear display
             self.device.clear()
