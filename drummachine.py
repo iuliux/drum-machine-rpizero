@@ -113,8 +113,9 @@ class RotaryEncoder:
         self.sw_pin = sw_pin
         
         self.clk_last_state = None
-        self.sw_last_state = None
         self.bpm_step = 1  # BPM change per detent
+        self.callback_id_clk = None
+        self.callback_id_sw = None
         
         if not LGPIO_AVAILABLE or gpio_handle is None:
             print("Rotary encoder disabled - lgpio not available")
@@ -125,31 +126,32 @@ class RotaryEncoder:
             lgpio.gpio_claim_input(gpio_handle, self.clk_pin, lgpio.SET_PULL_UP)
             lgpio.gpio_claim_input(gpio_handle, self.dt_pin, lgpio.SET_PULL_UP)
             
-            if self.sw_pin:
-                lgpio.gpio_claim_input(gpio_handle, self.sw_pin, lgpio.SET_PULL_UP)
-            
             # Store initial state
             self.clk_last_state = lgpio.gpio_read(gpio_handle, self.clk_pin)
-            if self.sw_pin:
-                self.sw_last_state = lgpio.gpio_read(gpio_handle, self.sw_pin)
             
-            print(f"Rotary encoder initialized on GPIO {clk_pin}/{dt_pin}")
+            # Set up alert (interrupt) on CLK pin for both edges
+            lgpio.gpio_claim_alert(gpio_handle, self.clk_pin, lgpio.BOTH_EDGES)
+            self.callback_id_clk = lgpio.callback(gpio_handle, self.clk_pin, lgpio.BOTH_EDGES, self._rotary_callback)
+            
+            if self.sw_pin:
+                lgpio.gpio_claim_input(gpio_handle, self.sw_pin, lgpio.SET_PULL_UP)
+                # Set up alert on button for falling edge
+                lgpio.gpio_claim_alert(gpio_handle, self.sw_pin, lgpio.FALLING_EDGE)
+                self.callback_id_sw = lgpio.callback(gpio_handle, self.sw_pin, lgpio.FALLING_EDGE, self._button_callback)
+            
+            print(f"Rotary encoder initialized on GPIO {clk_pin}/{dt_pin} (interrupt mode)")
             
         except Exception as e:
             print(f"Error initializing rotary encoder: {e}")
     
-    def poll(self):
-        """Poll rotary encoder state (called from main loop)"""
-        if not LGPIO_AVAILABLE or self.gpio_handle is None:
-            return
-        
+    def _rotary_callback(self, chip, gpio, level, tick):
+        """Interrupt callback for rotary encoder rotation"""
         try:
-            clk_state = lgpio.gpio_read(self.gpio_handle, self.clk_pin)
             dt_state = lgpio.gpio_read(self.gpio_handle, self.dt_pin)
             
             # Only process on rising edge of CLK
-            if clk_state != self.clk_last_state and clk_state == 1:
-                if dt_state != clk_state:
+            if level == 1 and self.clk_last_state == 0:
+                if dt_state != level:
                     # Clockwise rotation - increase BPM
                     new_bpm = self.sequencer.bpm + self.bpm_step
                     self.sequencer.set_bpm(new_bpm)
@@ -158,30 +160,39 @@ class RotaryEncoder:
                     new_bpm = self.sequencer.bpm - self.bpm_step
                     self.sequencer.set_bpm(new_bpm)
             
-            self.clk_last_state = clk_state
+            self.clk_last_state = level
             
-            # Check button press
-            if self.sw_pin:
-                sw_state = lgpio.gpio_read(self.gpio_handle, self.sw_pin)
-                # Detect falling edge (button press)
-                if self.sw_last_state == 1 and sw_state == 0:
-                    # Toggle play/stop on button press
-                    if self.sequencer.is_playing:
-                        print("Button: Stop")
-                        self.sequencer.stop()
-                    else:
-                        print("Button: Start")
-                        self.sequencer.start()
-                
-                self.sw_last_state = sw_state
-                
         except Exception as e:
-            print(f"Error polling encoder: {e}")
+            print(f"Error in rotary callback: {e}")
+    
+    def _button_callback(self, chip, gpio, level, tick):
+        """Interrupt callback for encoder button press"""
+        try:
+            # Toggle play/stop on button press
+            if self.sequencer.is_playing:
+                print("Button: Stop")
+                self.sequencer.stop()
+            else:
+                print("Button: Start")
+                self.sequencer.start()
+        except Exception as e:
+            print(f"Error in button callback: {e}")
+    
+    def poll(self):
+        """No-op in interrupt mode"""
+        pass
     
     def cleanup(self):
         """Clean up GPIO resources"""
         if LGPIO_AVAILABLE and self.gpio_handle is not None:
             try:
+                # Cancel callbacks
+                if self.callback_id_clk is not None:
+                    lgpio.callback_cancel(self.callback_id_clk)
+                if self.callback_id_sw is not None:
+                    lgpio.callback_cancel(self.callback_id_sw)
+                
+                # Free GPIO pins
                 lgpio.gpio_free(self.gpio_handle, self.clk_pin)
                 lgpio.gpio_free(self.gpio_handle, self.dt_pin)
                 if self.sw_pin:
@@ -277,6 +288,7 @@ class TouchHandler:
         self.last_touched_1 = 0
         self.last_touched_2 = 0
         self.use_irq = use_irq and LGPIO_AVAILABLE and gpio_handle is not None
+        self.callback_id = None
         
         if not MPR121_AVAILABLE:
             print("Touch sensors disabled - MPR121 library not available")
@@ -296,12 +308,22 @@ class TouchHandler:
             if self.use_irq:
                 lgpio.gpio_claim_input(gpio_handle, MPR121_IRQ_PIN, lgpio.SET_PULL_UP)
                 
-                print(f"MPR121 IRQ mode enabled on GPIO {MPR121_IRQ_PIN} (shared)")
+                # IRQ is active LOW - set up alert on falling edge
+                lgpio.gpio_claim_alert(gpio_handle, MPR121_IRQ_PIN, lgpio.FALLING_EDGE)
+                self.callback_id = lgpio.callback(gpio_handle, MPR121_IRQ_PIN, lgpio.FALLING_EDGE, self._irq_callback)
+                
+                print(f"MPR121 IRQ mode enabled on GPIO {MPR121_IRQ_PIN} (shared, interrupt mode)")
             
         except Exception as e:
             print(f"Error initializing MPR121: {e}")
             self.mpr121_1 = None
             self.mpr121_2 = None
+    
+    def _irq_callback(self, chip, gpio, level, tick):
+        """Interrupt callback for both MPR121 sensors (shared IRQ)"""
+        # Check both sensors since they share the IRQ line
+        self._process_sensor(1)
+        self._process_sensor(2)
     
     def _process_sensor(self, sensor_num):
         """Process touch events for a specific sensor"""
@@ -359,28 +381,26 @@ class TouchHandler:
                 return 2, pad_num - 4
     
     def poll(self):
-        """Poll touch sensors and check IRQ"""
+        """Poll touch sensors in non-IRQ mode, no-op if using interrupts"""
+        if self.use_irq:
+            return  # Interrupts handle everything
+            
         if self.mpr121_1 is None or self.mpr121_2 is None:
             return
         
-        # If using IRQ mode, check if IRQ pin is low
-        if self.use_irq:
-            try:
-                # IRQ is active LOW - check if either sensor triggered
-                if lgpio.gpio_read(self.gpio_handle, MPR121_IRQ_PIN) == 0:
-                    self._process_sensor(1)
-                    self._process_sensor(2)
-            except:
-                pass
-        else:
-            # Polling mode - always check both sensors
-            self._process_sensor(1)
-            self._process_sensor(2)
+        # Polling mode - always check both sensors
+        self._process_sensor(1)
+        self._process_sensor(2)
     
     def cleanup(self):
         """Clean up GPIO resources"""
         if self.use_irq and LGPIO_AVAILABLE and self.gpio_handle is not None:
             try:
+                # Cancel callback
+                if self.callback_id is not None:
+                    lgpio.callback_cancel(self.callback_id)
+                
+                # Free GPIO pin
                 lgpio.gpio_free(self.gpio_handle, MPR121_IRQ_PIN)
             except:
                 pass
@@ -623,12 +643,12 @@ def main():
     print("- LEDs: Red=Kick, Green=Snare, Blue=Hihat, White=Current step")
     print("Press Ctrl+C to stop.\n")
     
-    # Main loop - poll touch sensors, update LEDs, and poll encoder
+    # Main loop - update LEDs (touch and encoder handled by interrupts)
     try:
         while True:
-            touch.poll()
+            touch.poll()  # No-op if using IRQ mode
             leds.update()
-            encoder.poll()
+            encoder.poll()  # No-op in interrupt mode
             time.sleep(0.01)  # Poll at 100Hz
     except KeyboardInterrupt:
         print("\nStopping...")
