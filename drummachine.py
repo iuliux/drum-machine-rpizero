@@ -726,7 +726,7 @@ def main():
     
     # Initialize OLED display
     time.sleep(0.1)  # Small delay before I2C operations
-    oled = OLEDHandler(seq)
+    # oled = OLEDHandler(seq)
 
     # Initialize LED handler
     leds = LEDHandler(seq)
