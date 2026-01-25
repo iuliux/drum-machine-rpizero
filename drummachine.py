@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """
 Simple 8-step, 3-instrument drum machine sequencer for Raspberry Pi Zero 2 W
-Updated with Multi-mode Encoder (BPM/Volume) and OLED Optimizations
 """
 
 import numpy as np
@@ -143,10 +142,6 @@ class RotaryEncoder:
         self.callback_id_clk = None
         self.callback_id_sw = None
         
-        # Debounce state
-        self.last_rotary_time = 0
-        self.DEBOUNCE_MS = 0.05  # 50ms debounce for rotation
-        
         # Button state for long press detection
         self.button_pressed = False
         self.button_press_time = 0
@@ -184,12 +179,6 @@ class RotaryEncoder:
     def _rotary_callback(self, chip, gpio, level, tick):
         """Interrupt callback for rotary encoder rotation"""
         try:
-            # Simple software debounce
-            current_time = time.time()
-            if current_time - self.last_rotary_time < self.DEBOUNCE_MS:
-                return
-            self.last_rotary_time = current_time
-
             dt_state = lgpio.gpio_read(self.gpio_handle, self.dt_pin)
             
             if level == 1 and self.clk_last_state == 0:
