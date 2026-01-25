@@ -1,3 +1,12 @@
+Added to `/boot/firmware/config.txt`:
+
+```
+dtoverlay=hifiberry-dac
+```
+
+This configures the I2S pins (BCM 18, 19, 21 for BCLK, LRCLK, DATA).
+
+
 ```
 sudo apt update
 sudo apt install pip git
