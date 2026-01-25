@@ -143,8 +143,14 @@ class RotaryEncoder:
         self.callback_id_clk = None
         self.callback_id_sw = None
         
+        # Debounce state
+        self.last_rotary_time = 0
+        self.DEBOUNCE_MS = 0.05  # 50ms debounce for rotation
+        
         # Button state for long press detection
+        self.button_pressed = False
         self.button_press_time = 0
+        self.long_press_triggered = False
         self.LONG_PRESS_THRESHOLD = 0.6  # seconds
         
         if not LGPIO_AVAILABLE or gpio_handle is None:
@@ -178,6 +184,12 @@ class RotaryEncoder:
     def _rotary_callback(self, chip, gpio, level, tick):
         """Interrupt callback for rotary encoder rotation"""
         try:
+            # Simple software debounce
+            current_time = time.time()
+            if current_time - self.last_rotary_time < self.DEBOUNCE_MS:
+                return
+            self.last_rotary_time = current_time
+
             dt_state = lgpio.gpio_read(self.gpio_handle, self.dt_pin)
             
             if level == 1 and self.clk_last_state == 0:
@@ -189,7 +201,7 @@ class RotaryEncoder:
                     self.sequencer.set_bpm(new_bpm)
                 elif self.sequencer.mode == 'VOL':
                     # Change volume by 5%
-                    new_vol = self.sequencer.volume + (direction * 0.05)
+                    new_vol = round(self.sequencer.volume + (direction * 0.05), 2)
                     self.sequencer.set_volume(new_vol)
                 elif self.sequencer.mode == 'FX':
                     # Placeholder for future FX param
@@ -205,16 +217,13 @@ class RotaryEncoder:
         try:
             # level 0 = Pressed (Active Low), level 1 = Released
             if level == 0:
+                self.button_pressed = True
                 self.button_press_time = time.time()
+                self.long_press_triggered = False
             else:
-                # Button released - calculate duration
-                duration = time.time() - self.button_press_time
-                
-                if duration > self.LONG_PRESS_THRESHOLD:
-                    # Long Press: Cycle Mode
-                    self.sequencer.cycle_mode()
-                    print(f"Mode switched to: {self.sequencer.mode}")
-                else:
+                self.button_pressed = False
+                # If we released and haven't triggered long press yet, it's a short press
+                if not self.long_press_triggered:
                     # Short Press: Toggle Play/Stop
                     if self.sequencer.is_playing:
                         self.sequencer.stop()
@@ -225,8 +234,14 @@ class RotaryEncoder:
             print(f"Error in button callback: {e}")
     
     def poll(self):
-        """No-op in interrupt mode"""
-        pass
+        """Poll for long press events (called from main loop)"""
+        # Check if button is held down long enough for mode switch
+        if self.button_pressed and not self.long_press_triggered:
+            if time.time() - self.button_press_time > self.LONG_PRESS_THRESHOLD:
+                # Trigger Long Press Action immediately
+                self.sequencer.cycle_mode()
+                print(f"Mode switched to: {self.sequencer.mode}")
+                self.long_press_triggered = True
     
     def cleanup(self):
         """Clean up GPIO resources"""
@@ -854,7 +869,7 @@ def main():
             leds.update()
             oled.update()
             touch.poll()  # No-op if using IRQ mode
-            encoder.poll()  # No-op in interrupt mode
+            encoder.poll()  # Long press detection
             time.sleep(0.05) # 20 FPS
     except KeyboardInterrupt:
         print("\nStopping...")
