@@ -221,14 +221,17 @@ class RotaryEncoder:
                 self.button_press_time = time.time()
                 self.long_press_triggered = False
             else:
-                self.button_pressed = False
                 # If we released and haven't triggered long press yet, it's a short press
-                if not self.long_press_triggered:
+                if self.button_pressed and not self.long_press_triggered:
                     # Short Press: Toggle Play/Stop
                     if self.sequencer.is_playing:
                         self.sequencer.stop()
                     else:
                         self.sequencer.start()
+                
+                # Reset state on release
+                self.button_pressed = False
+                self.long_press_triggered = False
                         
         except Exception as e:
             print(f"Error in button callback: {e}")
@@ -241,6 +244,7 @@ class RotaryEncoder:
                 # Trigger Long Press Action immediately
                 self.sequencer.cycle_mode()
                 print(f"Mode switched to: {self.sequencer.mode}")
+                # This flag prevents the _button_callback release from triggering a stop/start
                 self.long_press_triggered = True
     
     def cleanup(self):
