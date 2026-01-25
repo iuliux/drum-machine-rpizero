@@ -357,7 +357,7 @@ class OLEDHandler:
             
             try:
                 # Small font - try to get something condensed and bold
-                self.font_small = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSansCondensed-Bold.ttf", 11)
+                self.font_small = ImageFont.truetype("./fonts/PakPresiden.ttf", 11)
             except:
                 try:
                     self.font_small = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 11)
