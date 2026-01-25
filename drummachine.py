@@ -330,7 +330,7 @@ class OLEDHandler:
         
         try:
             # Initialize I2C and OLED device
-            serial = i2c(port=1, address=OLED_I2C_ADDR)
+            serial = i2c(port=1, address=OLED_I2C_ADDR, bus_speed_hz=100000)  # 100kHz instead of 400kHz
             self.device = ssd1306(serial, width=OLED_WIDTH, height=OLED_HEIGHT)
             
             # Try to load fonts (these are standard PIL fonts)
@@ -402,13 +402,13 @@ class TouchHandler:
         try:
             time.sleep(0.1)  # Small delay before I2C operations
             # Initialize I2C
-            i2c = busio.I2C(board.SCL, board.SDA)
+            i2c_bus = busio.I2C(board.SCL, board.SDA, frequency=100000)
             time.sleep(0.05)  # Wait for I2C bus
             
             # Initialize both MPR121 sensors
-            self.mpr121_1 = adafruit_mpr121.MPR121(i2c, address=MPR121_ADDR_1)
+            self.mpr121_1 = adafruit_mpr121.MPR121(i2c_bus, address=MPR121_ADDR_1)
             time.sleep(0.02)  # Delay between sensor initializations
-            self.mpr121_2 = adafruit_mpr121.MPR121(i2c, address=MPR121_ADDR_2)
+            self.mpr121_2 = adafruit_mpr121.MPR121(i2c_bus, address=MPR121_ADDR_2)
             
             print(f"MPR121 sensors initialized at 0x{MPR121_ADDR_1:02X} and 0x{MPR121_ADDR_2:02X}")
             
