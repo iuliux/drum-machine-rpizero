@@ -300,6 +300,8 @@ class OLEDHandler:
         self.device = None
         self.font_large = None
         self.font_small = None
+        self.update_counter = 0
+        self.last_bpm = 0
         
         # Metronome icon (34x34px) - converted from your Arduino bitmap
         icon_data = [
