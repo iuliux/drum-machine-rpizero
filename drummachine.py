@@ -400,11 +400,14 @@ class TouchHandler:
             return
         
         try:
+            time.sleep(0.1)  # Small delay before I2C operations
             # Initialize I2C
             i2c = busio.I2C(board.SCL, board.SDA)
+            time.sleep(0.05)  # Wait for I2C bus
             
             # Initialize both MPR121 sensors
             self.mpr121_1 = adafruit_mpr121.MPR121(i2c, address=MPR121_ADDR_1)
+            time.sleep(0.02)  # Delay between sensor initializations
             self.mpr121_2 = adafruit_mpr121.MPR121(i2c, address=MPR121_ADDR_2)
             
             print(f"MPR121 sensors initialized at 0x{MPR121_ADDR_1:02X} and 0x{MPR121_ADDR_2:02X}")
@@ -721,11 +724,12 @@ def main():
     # Initialize touch handler (use_irq=True by default)
     touch = TouchHandler(seq, gpio_handle, use_irq=True)
     
+    # Initialize OLED display
+    time.sleep(0.1)  # Small delay before I2C operations
+    oled = OLEDHandler(seq)
+
     # Initialize LED handler
     leds = LEDHandler(seq)
-    
-    # Initialize OLED display
-    oled = OLEDHandler(seq)
     
     # Initialize rotary encoder
     encoder = RotaryEncoder(seq, gpio_handle)
