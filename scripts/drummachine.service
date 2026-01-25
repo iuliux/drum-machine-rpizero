@@ -4,7 +4,8 @@ After=network.target sound.target
 
 [Service]
 Type=simple
-User=pi
+User=root
+Group=root
 WorkingDirectory=/home/pi/drum-machine-rpizero
 ExecStart=/home/pi/drum-machine-rpizero/scripts/drumachine-start.sh
 Restart=on-failure

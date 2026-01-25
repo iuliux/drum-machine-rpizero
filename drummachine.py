@@ -46,6 +46,7 @@ NUM_INSTRUMENTS = len(INSTRUMENT_NAMES)
 # MPR121 configuration
 MPR121_ADDR_1 = 0x5A  # First MPR121 - handles kick (8 pads) + snare (4 pads)
 MPR121_ADDR_2 = 0x5B  # Second MPR121 - handles snare (4 pads) + hihat (8 pads)
+MPR121_IRQ_PIN = 4    # GPIO 4 - shared IRQ for both MPR121s (optional but recommended)
 
 # NeoPixel configuration
 NEOPIXEL_PIN = board.D12 if NEOPIXEL_AVAILABLE else None  # GPIO 12 (PWM0 - alternative)
@@ -266,12 +267,13 @@ class LEDHandler:
 
 class TouchHandler:
     """Handles MPR121 capacitive touch sensors"""
-    def __init__(self, sequencer):
+    def __init__(self, sequencer, use_irq=True):
         self.sequencer = sequencer
         self.mpr121_1 = None
         self.mpr121_2 = None
         self.last_touched_1 = 0
         self.last_touched_2 = 0
+        self.use_irq = use_irq and GPIO_AVAILABLE
         
         if not MPR121_AVAILABLE:
             print("Touch sensors disabled - MPR121 library not available")
@@ -287,10 +289,56 @@ class TouchHandler:
             
             print(f"MPR121 sensors initialized at 0x{MPR121_ADDR_1:02X} and 0x{MPR121_ADDR_2:02X}")
             
+            # Set up shared IRQ pin if using interrupt mode
+            if self.use_irq:
+                GPIO.setmode(GPIO.BCM)
+                GPIO.setup(MPR121_IRQ_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+                
+                # IRQ is active LOW - triggers on falling edge when touch state changes
+                # Both MPR121s share this pin (open-drain outputs)
+                GPIO.add_event_detect(MPR121_IRQ_PIN, GPIO.FALLING, 
+                                     callback=self._irq_callback, bouncetime=10)
+                
+                print(f"MPR121 IRQ mode enabled on GPIO {MPR121_IRQ_PIN} (shared)")
+            
         except Exception as e:
             print(f"Error initializing MPR121: {e}")
             self.mpr121_1 = None
             self.mpr121_2 = None
+    
+    def _irq_callback(self, channel):
+        """Interrupt callback for both MPR121 sensors (shared IRQ)"""
+        # Check both sensors since they share the IRQ line
+        self._process_sensor(1)
+        self._process_sensor(2)
+    
+    def _process_sensor(self, sensor_num):
+        """Process touch events for a specific sensor"""
+        try:
+            if sensor_num == 1 and self.mpr121_1:
+                touched = self.mpr121_1.touched()
+                new_touches = touched & ~self.last_touched_1
+                
+                for i in range(12):
+                    if new_touches & (1 << i):
+                        instrument, step = self.map_touch_to_pattern(1, i)
+                        self.sequencer.toggle_step(instrument, step)
+                
+                self.last_touched_1 = touched
+                
+            elif sensor_num == 2 and self.mpr121_2:
+                touched = self.mpr121_2.touched()
+                new_touches = touched & ~self.last_touched_2
+                
+                for i in range(12):
+                    if new_touches & (1 << i):
+                        instrument, step = self.map_touch_to_pattern(2, i)
+                        self.sequencer.toggle_step(instrument, step)
+                
+                self.last_touched_2 = touched
+                
+        except Exception as e:
+            print(f"Error in touch IRQ callback: {e}")
     
     def map_touch_to_pattern(self, sensor_num, pad_num):
         """
@@ -320,35 +368,24 @@ class TouchHandler:
                 return 2, pad_num - 4
     
     def poll(self):
-        """Poll touch sensors and toggle steps on new touches"""
+        """Poll touch sensors (only used if not in IRQ mode)"""
+        if self.use_irq:
+            return  # IRQ handles everything
+        
         if self.mpr121_1 is None or self.mpr121_2 is None:
             return
         
-        try:
-            # Read current touch state
-            touched_1 = self.mpr121_1.touched()
-            touched_2 = self.mpr121_2.touched()
-            
-            # Detect new touches on sensor 1
-            new_touches_1 = touched_1 & ~self.last_touched_1
-            for i in range(12):
-                if new_touches_1 & (1 << i):
-                    instrument, step = self.map_touch_to_pattern(1, i)
-                    self.sequencer.toggle_step(instrument, step)
-            
-            # Detect new touches on sensor 2
-            new_touches_2 = touched_2 & ~self.last_touched_2
-            for i in range(12):
-                if new_touches_2 & (1 << i):
-                    instrument, step = self.map_touch_to_pattern(2, i)
-                    self.sequencer.toggle_step(instrument, step)
-            
-            # Update last touched state
-            self.last_touched_1 = touched_1
-            self.last_touched_2 = touched_2
-            
-        except Exception as e:
-            print(f"Error polling touch sensors: {e}")
+        # Process both sensors in polling mode
+        self._process_sensor(1)
+        self._process_sensor(2)
+    
+    def cleanup(self):
+        """Clean up GPIO resources"""
+        if self.use_irq and GPIO_AVAILABLE:
+            try:
+                GPIO.cleanup(MPR121_IRQ_PIN)
+            except:
+                pass
 
 
 class Sequencer:
@@ -550,8 +587,8 @@ def main():
     # Create sequencer
     seq = Sequencer(bpm=120)
     
-    # Initialize touch handler
-    touch = TouchHandler(seq)
+    # Initialize touch handler (use_irq=True by default)
+    touch = TouchHandler(seq, use_irq=True)
     
     # Initialize LED handler
     leds = LEDHandler(seq)
@@ -580,10 +617,10 @@ def main():
     print("- LEDs: Red=Kick, Green=Snare, Blue=Hihat, White=Current step")
     print("Press Ctrl+C to stop.\n")
     
-    # Main loop - poll touch sensors and update LEDs
+    # Main loop - update LEDs (touch now handled by IRQ)
     try:
         while True:
-            touch.poll()
+            touch.poll()  # No-op if using IRQ mode
             leds.update()
             time.sleep(0.01)  # Poll at 100Hz
     except KeyboardInterrupt:
@@ -599,6 +636,11 @@ def main():
         
         try:
             encoder.cleanup()
+        except:
+            pass
+        
+        try:
+            touch.cleanup()
         except:
             pass
         
