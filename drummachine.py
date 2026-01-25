@@ -330,7 +330,7 @@ class OLEDHandler:
         
         try:
             # Initialize I2C and OLED device
-            serial = i2c(port=1, address=OLED_I2C_ADDR, bus_speed_hz=100000)  # 100kHz instead of 400kHz
+            serial = i2c(port=1, address=OLED_I2C_ADDR)
             self.device = ssd1306(serial, width=OLED_WIDTH, height=OLED_HEIGHT)
             
             # Try to load fonts (these are standard PIL fonts)
