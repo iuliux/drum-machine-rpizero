@@ -27,6 +27,16 @@ except (ImportError, NotImplementedError):
     print("Warning: NeoPixel library not available, running without LEDs")
 
 try:
+    from luma.core.interface.serial import i2c
+    from luma.oled.device import ssd1306
+    from luma.core.render import canvas
+    from PIL import Image, ImageDraw, ImageFont
+    OLED_AVAILABLE = True
+except (ImportError, NotImplementedError):
+    OLED_AVAILABLE = False
+    print("Warning: OLED libraries not available, running without display")
+
+try:
     import lgpio
     LGPIO_AVAILABLE = True
 except (ImportError, RuntimeError):
@@ -57,6 +67,11 @@ PIXEL_BRIGHTNESS = 0.3  # 0.0 to 1.0
 ENCODER_CLK_PIN = 17  # GPIO 17 for CLK (A pin)
 ENCODER_DT_PIN = 27   # GPIO 27 for DT (B pin)
 ENCODER_SW_PIN = 22   # GPIO 22 for switch (optional)
+
+# OLED configuration
+OLED_I2C_ADDR = 0x3C  # I2C address for OLED display
+OLED_WIDTH = 128
+OLED_HEIGHT = 64
 
 # Color scheme for instruments
 COLORS = {
@@ -276,6 +291,96 @@ class LEDHandler:
             
         except Exception as e:
             print(f"Error updating LEDs: {e}")
+
+
+class OLEDHandler:
+    """Handles OLED display for BPM and status"""
+    def __init__(self, sequencer):
+        self.sequencer = sequencer
+        self.device = None
+        self.font_large = None
+        self.font_small = None
+        
+        # Metronome icon (34x34px) - converted from your Arduino bitmap
+        self.metronome_icon = Image.new('1', (34, 34))
+        icon_data = [
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00,
+            0x00, 0x03, 0x00, 0x00, 0x00, 0x80, 0x07, 0x00, 0x00, 0x00, 0x80, 0x07, 0x00, 0x00, 0x00, 0xc0,
+            0x0f, 0x00, 0x00, 0x00, 0xc0, 0x0c, 0x03, 0x00, 0x00, 0xe0, 0x1c, 0x03, 0x00, 0x00, 0x60, 0x18,
+            0x03, 0x00, 0x00, 0x70, 0x98, 0x03, 0x00, 0x00, 0x30, 0x80, 0x01, 0x00, 0x00, 0x38, 0xc0, 0x01,
+            0x00, 0x00, 0x18, 0xc0, 0x00, 0x00, 0x00, 0x1c, 0xc0, 0x00, 0x00, 0x00, 0x0c, 0xe0, 0x00, 0x00,
+            0x00, 0x0c, 0x60, 0x00, 0x00, 0x00, 0x06, 0x70, 0x00, 0x00, 0x00, 0x06, 0x30, 0x00, 0x00, 0x00,
+            0x07, 0x30, 0x02, 0x00, 0x00, 0x03, 0x18, 0x02, 0x00, 0x80, 0x03, 0x18, 0x06, 0x00, 0x80, 0x01,
+            0x1c, 0x06, 0x00, 0xc0, 0x01, 0x0c, 0x0e, 0x00, 0xc0, 0x00, 0x0e, 0x0c, 0x00, 0xe0, 0x00, 0x06,
+            0x1c, 0x00, 0x60, 0x00, 0x06, 0x18, 0x00, 0x60, 0x00, 0x03, 0x18, 0x00, 0x70, 0x00, 0x00, 0x38,
+            0x00, 0x70, 0x00, 0x00, 0x38, 0x00, 0xe0, 0xff, 0xff, 0x1f, 0x00, 0xc0, 0xff, 0xff, 0x0f, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+        ]
+        
+        # Convert bitmap data to image
+        pixels = []
+        for byte in icon_data:
+            for bit in range(8):
+                pixels.append(255 if byte & (1 << bit) else 0)
+        self.metronome_icon.putdata(pixels[:34*34])
+        
+        if not OLED_AVAILABLE:
+            print("OLED disabled - libraries not available")
+            return
+        
+        try:
+            # Initialize I2C and OLED device
+            serial = i2c(port=1, address=OLED_I2C_ADDR)
+            self.device = ssd1306(serial, width=OLED_WIDTH, height=OLED_HEIGHT)
+            
+            # Try to load fonts (these are standard PIL fonts)
+            try:
+                # Large font for BPM number
+                self.font_large = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 28)
+            except:
+                self.font_large = ImageFont.load_default()
+            
+            try:
+                # Small font for text
+                self.font_small = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 10)
+            except:
+                self.font_small = ImageFont.load_default()
+            
+            # Clear display
+            self.device.clear()
+            
+            print(f"OLED display initialized at 0x{OLED_I2C_ADDR:02X}")
+            
+        except Exception as e:
+            print(f"Error initializing OLED: {e}")
+            self.device = None
+    
+    def update(self):
+        """Update OLED display with current BPM and status"""
+        if self.device is None:
+            return
+        
+        try:
+            # Create image for drawing
+            image = Image.new('1', (OLED_WIDTH, OLED_HEIGHT))
+            draw = ImageDraw.Draw(image)
+            
+            # Draw metronome icon at top left
+            image.paste(self.metronome_icon, (10, 6))
+            
+            # Draw BPM number (large)
+            bpm_text = str(self.sequencer.bpm)
+            draw.text((62, 10), bpm_text, font=self.font_large, fill=255)
+            
+            # Draw status text at bottom
+            status_text = "1 bar - 1/8 notes"
+            draw.text((10, 52), status_text, font=self.font_small, fill=255)
+            
+            # Display the image
+            self.device.display(image)
+            
+        except Exception as e:
+            print(f"Error updating OLED: {e}")
 
 
 class TouchHandler:
@@ -619,6 +724,9 @@ def main():
     # Initialize LED handler
     leds = LEDHandler(seq)
     
+    # Initialize OLED display
+    oled = OLEDHandler(seq)
+    
     # Initialize rotary encoder
     encoder = RotaryEncoder(seq, gpio_handle)
     
@@ -643,11 +751,12 @@ def main():
     print("- LEDs: Red=Kick, Green=Snare, Blue=Hihat, White=Current step")
     print("Press Ctrl+C to stop.\n")
     
-    # Main loop - update LEDs (touch and encoder handled by interrupts)
+    # Main loop - update LEDs and OLED (touch and encoder handled by interrupts)
     try:
         while True:
             touch.poll()  # No-op if using IRQ mode
             leds.update()
+            oled.update()
             encoder.poll()  # No-op in interrupt mode
             time.sleep(0.01)  # Poll at 100Hz
     except KeyboardInterrupt:
