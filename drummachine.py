@@ -27,11 +27,11 @@ except (ImportError, NotImplementedError):
     print("Warning: NeoPixel library not available, running without LEDs")
 
 try:
-    import RPi.GPIO as GPIO
-    GPIO_AVAILABLE = True
+    import lgpio
+    LGPIO_AVAILABLE = True
 except (ImportError, RuntimeError):
-    GPIO_AVAILABLE = False
-    print("Warning: RPi.GPIO not available, running without rotary encoder")
+    LGPIO_AVAILABLE = False
+    print("Warning: lgpio not available, running without rotary encoder")
 
 # Audio configuration
 SAMPLE_RATE = 44100
@@ -105,48 +105,47 @@ class DrumSample:
 
 class RotaryEncoder:
     """Handles quadrature rotary encoder for BPM control"""
-    def __init__(self, sequencer, clk_pin=ENCODER_CLK_PIN, dt_pin=ENCODER_DT_PIN, sw_pin=ENCODER_SW_PIN):
+    def __init__(self, sequencer, gpio_handle, clk_pin=ENCODER_CLK_PIN, dt_pin=ENCODER_DT_PIN, sw_pin=ENCODER_SW_PIN):
         self.sequencer = sequencer
+        self.gpio_handle = gpio_handle
         self.clk_pin = clk_pin
         self.dt_pin = dt_pin
         self.sw_pin = sw_pin
         
         self.clk_last_state = None
+        self.sw_last_state = None
         self.bpm_step = 1  # BPM change per detent
         
-        if not GPIO_AVAILABLE:
-            print("Rotary encoder disabled - RPi.GPIO not available")
+        if not LGPIO_AVAILABLE or gpio_handle is None:
+            print("Rotary encoder disabled - lgpio not available")
             return
         
         try:
-            # Set up GPIO
-            GPIO.setmode(GPIO.BCM)
-            GPIO.setup(self.clk_pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-            GPIO.setup(self.dt_pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+            # Set up GPIO pins
+            lgpio.gpio_claim_input(gpio_handle, self.clk_pin, lgpio.SET_PULL_UP)
+            lgpio.gpio_claim_input(gpio_handle, self.dt_pin, lgpio.SET_PULL_UP)
             
             if self.sw_pin:
-                GPIO.setup(self.sw_pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-                # Add interrupt for button press
-                GPIO.add_event_detect(self.sw_pin, GPIO.FALLING, 
-                                     callback=self.button_pressed, bouncetime=200)
+                lgpio.gpio_claim_input(gpio_handle, self.sw_pin, lgpio.SET_PULL_UP)
             
             # Store initial state
-            self.clk_last_state = GPIO.input(self.clk_pin)
-            
-            # Add interrupt for rotation
-            GPIO.add_event_detect(self.clk_pin, GPIO.BOTH, 
-                                 callback=self.rotary_changed, bouncetime=5)
+            self.clk_last_state = lgpio.gpio_read(gpio_handle, self.clk_pin)
+            if self.sw_pin:
+                self.sw_last_state = lgpio.gpio_read(gpio_handle, self.sw_pin)
             
             print(f"Rotary encoder initialized on GPIO {clk_pin}/{dt_pin}")
             
         except Exception as e:
             print(f"Error initializing rotary encoder: {e}")
     
-    def rotary_changed(self, channel):
-        """Interrupt handler for rotary encoder rotation"""
+    def poll(self):
+        """Poll rotary encoder state (called from main loop)"""
+        if not LGPIO_AVAILABLE or self.gpio_handle is None:
+            return
+        
         try:
-            clk_state = GPIO.input(self.clk_pin)
-            dt_state = GPIO.input(self.dt_pin)
+            clk_state = lgpio.gpio_read(self.gpio_handle, self.clk_pin)
+            dt_state = lgpio.gpio_read(self.gpio_handle, self.dt_pin)
             
             # Only process on rising edge of CLK
             if clk_state != self.clk_last_state and clk_state == 1:
@@ -161,29 +160,32 @@ class RotaryEncoder:
             
             self.clk_last_state = clk_state
             
+            # Check button press
+            if self.sw_pin:
+                sw_state = lgpio.gpio_read(self.gpio_handle, self.sw_pin)
+                # Detect falling edge (button press)
+                if self.sw_last_state == 1 and sw_state == 0:
+                    # Toggle play/stop on button press
+                    if self.sequencer.is_playing:
+                        print("Button: Stop")
+                        self.sequencer.stop()
+                    else:
+                        print("Button: Start")
+                        self.sequencer.start()
+                
+                self.sw_last_state = sw_state
+                
         except Exception as e:
-            print(f"Error in rotary encoder callback: {e}")
-    
-    def button_pressed(self, channel):
-        """Interrupt handler for encoder button press"""
-        try:
-            # Toggle play/stop on button press
-            if self.sequencer.is_playing:
-                print("Button: Stop")
-                self.sequencer.stop()
-            else:
-                print("Button: Start")
-                self.sequencer.start()
-        except Exception as e:
-            print(f"Error in button callback: {e}")
+            print(f"Error polling encoder: {e}")
     
     def cleanup(self):
         """Clean up GPIO resources"""
-        if GPIO_AVAILABLE:
+        if LGPIO_AVAILABLE and self.gpio_handle is not None:
             try:
-                GPIO.cleanup([self.clk_pin, self.dt_pin])
+                lgpio.gpio_free(self.gpio_handle, self.clk_pin)
+                lgpio.gpio_free(self.gpio_handle, self.dt_pin)
                 if self.sw_pin:
-                    GPIO.cleanup(self.sw_pin)
+                    lgpio.gpio_free(self.gpio_handle, self.sw_pin)
             except:
                 pass
 
@@ -267,13 +269,14 @@ class LEDHandler:
 
 class TouchHandler:
     """Handles MPR121 capacitive touch sensors"""
-    def __init__(self, sequencer, use_irq=True):
+    def __init__(self, sequencer, gpio_handle, use_irq=True):
         self.sequencer = sequencer
+        self.gpio_handle = gpio_handle
         self.mpr121_1 = None
         self.mpr121_2 = None
         self.last_touched_1 = 0
         self.last_touched_2 = 0
-        self.use_irq = use_irq and GPIO_AVAILABLE
+        self.use_irq = use_irq and LGPIO_AVAILABLE and gpio_handle is not None
         
         if not MPR121_AVAILABLE:
             print("Touch sensors disabled - MPR121 library not available")
@@ -291,13 +294,7 @@ class TouchHandler:
             
             # Set up shared IRQ pin if using interrupt mode
             if self.use_irq:
-                GPIO.setmode(GPIO.BCM)
-                GPIO.setup(MPR121_IRQ_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-                
-                # IRQ is active LOW - triggers on falling edge when touch state changes
-                # Both MPR121s share this pin (open-drain outputs)
-                GPIO.add_event_detect(MPR121_IRQ_PIN, GPIO.FALLING, 
-                                     callback=self._irq_callback, bouncetime=10)
+                lgpio.gpio_claim_input(gpio_handle, MPR121_IRQ_PIN, lgpio.SET_PULL_UP)
                 
                 print(f"MPR121 IRQ mode enabled on GPIO {MPR121_IRQ_PIN} (shared)")
             
@@ -305,12 +302,6 @@ class TouchHandler:
             print(f"Error initializing MPR121: {e}")
             self.mpr121_1 = None
             self.mpr121_2 = None
-    
-    def _irq_callback(self, channel):
-        """Interrupt callback for both MPR121 sensors (shared IRQ)"""
-        # Check both sensors since they share the IRQ line
-        self._process_sensor(1)
-        self._process_sensor(2)
     
     def _process_sensor(self, sensor_num):
         """Process touch events for a specific sensor"""
@@ -338,7 +329,7 @@ class TouchHandler:
                 self.last_touched_2 = touched
                 
         except Exception as e:
-            print(f"Error in touch IRQ callback: {e}")
+            print(f"Error in touch callback: {e}")
     
     def map_touch_to_pattern(self, sensor_num, pad_num):
         """
@@ -368,22 +359,29 @@ class TouchHandler:
                 return 2, pad_num - 4
     
     def poll(self):
-        """Poll touch sensors (only used if not in IRQ mode)"""
-        if self.use_irq:
-            return  # IRQ handles everything
-        
+        """Poll touch sensors and check IRQ"""
         if self.mpr121_1 is None or self.mpr121_2 is None:
             return
         
-        # Process both sensors in polling mode
-        self._process_sensor(1)
-        self._process_sensor(2)
+        # If using IRQ mode, check if IRQ pin is low
+        if self.use_irq:
+            try:
+                # IRQ is active LOW - check if either sensor triggered
+                if lgpio.gpio_read(self.gpio_handle, MPR121_IRQ_PIN) == 0:
+                    self._process_sensor(1)
+                    self._process_sensor(2)
+            except:
+                pass
+        else:
+            # Polling mode - always check both sensors
+            self._process_sensor(1)
+            self._process_sensor(2)
     
     def cleanup(self):
         """Clean up GPIO resources"""
-        if self.use_irq and GPIO_AVAILABLE:
+        if self.use_irq and LGPIO_AVAILABLE and self.gpio_handle is not None:
             try:
-                GPIO.cleanup(MPR121_IRQ_PIN)
+                lgpio.gpio_free(self.gpio_handle, MPR121_IRQ_PIN)
             except:
                 pass
 
@@ -584,17 +582,25 @@ def main():
     print("Raspberry Pi Drum Machine")
     print("=" * 40)
     
+    # Open GPIO chip
+    gpio_handle = None
+    if LGPIO_AVAILABLE:
+        try:
+            gpio_handle = lgpio.gpiochip_open(0)
+        except Exception as e:
+            print(f"Warning: Could not open GPIO: {e}")
+    
     # Create sequencer
     seq = Sequencer(bpm=120)
     
     # Initialize touch handler (use_irq=True by default)
-    touch = TouchHandler(seq, use_irq=True)
+    touch = TouchHandler(seq, gpio_handle, use_irq=True)
     
     # Initialize LED handler
     leds = LEDHandler(seq)
     
     # Initialize rotary encoder
-    encoder = RotaryEncoder(seq)
+    encoder = RotaryEncoder(seq, gpio_handle)
     
     # Set up a simple test pattern (for testing without touch sensors)
     # Kick on steps 0, 4
@@ -617,11 +623,12 @@ def main():
     print("- LEDs: Red=Kick, Green=Snare, Blue=Hihat, White=Current step")
     print("Press Ctrl+C to stop.\n")
     
-    # Main loop - update LEDs (touch now handled by IRQ)
+    # Main loop - poll touch sensors, update LEDs, and poll encoder
     try:
         while True:
-            touch.poll()  # No-op if using IRQ mode
+            touch.poll()
             leds.update()
+            encoder.poll()
             time.sleep(0.01)  # Poll at 100Hz
     except KeyboardInterrupt:
         print("\nStopping...")
@@ -651,6 +658,13 @@ def main():
                 leds.pixels.show()
         except:
             pass
+        
+        # Close GPIO handle
+        if gpio_handle is not None:
+            try:
+                lgpio.gpiochip_close(gpio_handle)
+            except:
+                pass
         
         print("Cleanup complete")
 

@@ -4,3 +4,4 @@ soundfile==0.13.1
 adafruit-circuitpython-mpr121==2.1.25
 rpi_ws281x==5.0.0
 adafruit-circuitpython-neopixel==6.3.21
+rpi-lgpio==0.6
