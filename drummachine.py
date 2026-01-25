@@ -760,7 +760,7 @@ def main():
         while True:
             touch.poll()  # No-op if using IRQ mode
             leds.update()
-            oled.update()
+            # oled.update()
             encoder.poll()  # No-op in interrupt mode
             time.sleep(0.01)  # Poll at 100Hz
     except KeyboardInterrupt:
