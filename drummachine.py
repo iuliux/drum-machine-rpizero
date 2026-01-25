@@ -26,15 +26,15 @@ except (ImportError, NotImplementedError):
     NEOPIXEL_AVAILABLE = False
     print("Warning: NeoPixel library not available, running without LEDs")
 
-try:
-    from luma.core.interface.serial import i2c
-    from luma.oled.device import ssd1306
-    from luma.core.render import canvas
-    from PIL import Image, ImageDraw, ImageFont
-    OLED_AVAILABLE = True
-except (ImportError, NotImplementedError):
-    OLED_AVAILABLE = False
-    print("Warning: OLED libraries not available, running without display")
+# try:
+#     from luma.core.interface.serial import i2c
+#     from luma.oled.device import ssd1306
+#     from luma.core.render import canvas
+#     from PIL import Image, ImageDraw, ImageFont
+#     OLED_AVAILABLE = True
+# except (ImportError, NotImplementedError):
+#     OLED_AVAILABLE = False
+#     print("Warning: OLED libraries not available, running without display")
 
 try:
     import lgpio
