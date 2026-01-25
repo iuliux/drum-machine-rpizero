@@ -353,7 +353,7 @@ class OLEDHandler:
             except:
                 try:
                     # Fallback to DejaVu Sans Bold
-                    self.font_large = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 32)
+                    self.font_large = ImageFont.truetype("/usr/share/fonts/truetype/freefont/FreeSansBold.ttf", 32)
                 except:
                     self.font_large = ImageFont.load_default()
             
@@ -362,7 +362,7 @@ class OLEDHandler:
                 self.font_small = ImageFont.truetype("./fonts/LeagueSpartan-Bold.ttf", 14)
             except:
                 try:
-                    self.font_small = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 11)
+                    self.font_small = ImageFont.truetype("/usr/share/fonts/truetype/freefont/FreeSansBold.ttf", 11)
                 except:
                     self.font_small = ImageFont.load_default()
             
