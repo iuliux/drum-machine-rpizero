@@ -402,7 +402,7 @@ class OLEDHandler:
             
             # Draw status text at bottom
             status_text = "1 bar - 1/8 notes"
-            draw.text((10, 52), status_text, font=self.font_small, fill=255)
+            draw.text((10, 50), status_text, font=self.font_small, fill=255)
             
             # Display the image
             self.device.display(image)
