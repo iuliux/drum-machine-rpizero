@@ -357,7 +357,7 @@ class OLEDHandler:
             
             try:
                 # Small font - try to get something condensed and bold
-                self.font_small = ImageFont.truetype("./fonts/Jersey10-Regular.ttf", 11)
+                self.font_small = ImageFont.truetype("./fonts/Jersey10-Regular.ttf", 14)
             except:
                 try:
                     self.font_small = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 11)
@@ -377,6 +377,14 @@ class OLEDHandler:
         """Update OLED display with current BPM and status"""
         if self.device is None:
             return
+        
+        # Only update every 10th frame (10Hz) or when BPM changes to reduce I2C traffic
+        self.update_counter += 1
+        if self.sequencer.bpm == self.last_bpm and self.update_counter < 10:
+            return
+        
+        self.update_counter = 0
+        self.last_bpm = self.sequencer.bpm
         
         try:
             # Create image for drawing
