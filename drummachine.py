@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
 Simple 8-step, 3-instrument drum machine sequencer for Raspberry Pi Zero 2 W
+Updated with Multi-mode Encoder (BPM/Volume) and OLED Optimizations
 """
 
 import numpy as np
@@ -10,6 +11,8 @@ import time
 import threading
 import random
 from pathlib import Path
+
+# --- Hardware Import Try/Except Blocks ---
 try:
     import board
     import busio
@@ -45,7 +48,7 @@ except (ImportError, RuntimeError):
 
 # Audio configuration
 SAMPLE_RATE = 44100
-BLOCK_SIZE = 512  # Buffer size for low latency
+BLOCK_SIZE = 1024  # Buffer size for low latency
 
 # Sequencer configuration
 NUM_STEPS = 8
@@ -80,6 +83,8 @@ COLORS = {
     'hihat': (0, 100, 255),   # Blue
     'current': (255, 255, 255)  # White for current step indicator
 }
+
+# --- Classes ---
 
 class DrumSample:
     """Represents a single drum sample"""
@@ -119,7 +124,13 @@ class DrumSample:
 
 
 class RotaryEncoder:
-    """Handles quadrature rotary encoder for BPM control"""
+    """
+    Handles quadrature rotary encoder.
+    Features:
+    - Rotate: Changes value based on current mode
+    - Short Press: Toggle Play/Stop
+    - Long Press: Cycle Modes (BPM -> VOL -> FX)
+    """
     def __init__(self, sequencer, gpio_handle, clk_pin=ENCODER_CLK_PIN, dt_pin=ENCODER_DT_PIN, sw_pin=ENCODER_SW_PIN):
         self.sequencer = sequencer
         self.gpio_handle = gpio_handle
@@ -128,9 +139,13 @@ class RotaryEncoder:
         self.sw_pin = sw_pin
         
         self.clk_last_state = None
-        self.bpm_step = 1  # BPM change per detent
+        self.bpm_step = 5  # BPM change per detent
         self.callback_id_clk = None
         self.callback_id_sw = None
+        
+        # Button state for long press detection
+        self.button_press_time = 0
+        self.LONG_PRESS_THRESHOLD = 0.6  # seconds
         
         if not LGPIO_AVAILABLE or gpio_handle is None:
             print("Rotary encoder disabled - lgpio not available")
@@ -148,11 +163,12 @@ class RotaryEncoder:
             lgpio.gpio_claim_alert(gpio_handle, self.clk_pin, lgpio.BOTH_EDGES)
             self.callback_id_clk = lgpio.callback(gpio_handle, self.clk_pin, lgpio.BOTH_EDGES, self._rotary_callback)
             
+            # Button Pin
             if self.sw_pin:
                 lgpio.gpio_claim_input(gpio_handle, self.sw_pin, lgpio.SET_PULL_UP)
-                # Set up alert on button for falling edge
-                lgpio.gpio_claim_alert(gpio_handle, self.sw_pin, lgpio.FALLING_EDGE)
-                self.callback_id_sw = lgpio.callback(gpio_handle, self.sw_pin, lgpio.FALLING_EDGE, self._button_callback)
+                # Monitor BOTH edges to calculate duration
+                lgpio.gpio_claim_alert(gpio_handle, self.sw_pin, lgpio.BOTH_EDGES)
+                self.callback_id_sw = lgpio.callback(gpio_handle, self.sw_pin, lgpio.BOTH_EDGES, self._button_callback)
             
             print(f"Rotary encoder initialized on GPIO {clk_pin}/{dt_pin} (interrupt mode)")
             
@@ -164,16 +180,20 @@ class RotaryEncoder:
         try:
             dt_state = lgpio.gpio_read(self.gpio_handle, self.dt_pin)
             
-            # Only process on rising edge of CLK
             if level == 1 and self.clk_last_state == 0:
-                if dt_state != level:
-                    # Clockwise rotation - increase BPM
-                    new_bpm = self.sequencer.bpm + self.bpm_step
+                direction = 1 if dt_state != level else -1
+                
+                # Handle value change based on current mode
+                if self.sequencer.mode == 'BPM':
+                    new_bpm = self.sequencer.bpm + direction * self.bpm_step
                     self.sequencer.set_bpm(new_bpm)
-                else:
-                    # Counter-clockwise rotation - decrease BPM
-                    new_bpm = self.sequencer.bpm - self.bpm_step
-                    self.sequencer.set_bpm(new_bpm)
+                elif self.sequencer.mode == 'VOL':
+                    # Change volume by 5%
+                    new_vol = self.sequencer.volume + (direction * 0.05)
+                    self.sequencer.set_volume(new_vol)
+                elif self.sequencer.mode == 'FX':
+                    # Placeholder for future FX param
+                    print("FX parameter change (Not implemented)")
             
             self.clk_last_state = level
             
@@ -183,13 +203,24 @@ class RotaryEncoder:
     def _button_callback(self, chip, gpio, level, tick):
         """Interrupt callback for encoder button press"""
         try:
-            # Toggle play/stop on button press
-            if self.sequencer.is_playing:
-                print("Button: Stop")
-                self.sequencer.stop()
+            # level 0 = Pressed (Active Low), level 1 = Released
+            if level == 0:
+                self.button_press_time = time.time()
             else:
-                print("Button: Start")
-                self.sequencer.start()
+                # Button released - calculate duration
+                duration = time.time() - self.button_press_time
+                
+                if duration > self.LONG_PRESS_THRESHOLD:
+                    # Long Press: Cycle Mode
+                    self.sequencer.cycle_mode()
+                    print(f"Mode switched to: {self.sequencer.mode}")
+                else:
+                    # Short Press: Toggle Play/Stop
+                    if self.sequencer.is_playing:
+                        self.sequencer.stop()
+                    else:
+                        self.sequencer.start()
+                        
         except Exception as e:
             print(f"Error in button callback: {e}")
     
@@ -210,11 +241,8 @@ class RotaryEncoder:
                 # Free GPIO pins
                 lgpio.gpio_free(self.gpio_handle, self.clk_pin)
                 lgpio.gpio_free(self.gpio_handle, self.dt_pin)
-                if self.sw_pin:
-                    lgpio.gpio_free(self.gpio_handle, self.sw_pin)
-            except:
-                pass
-
+                if self.sw_pin: lgpio.gpio_free(self.gpio_handle, self.sw_pin)
+            except: pass
 
 class LEDHandler:
     """Handles WS2812B NeoPixel LED strip display"""
@@ -244,7 +272,6 @@ class LEDHandler:
             
         except Exception as e:
             print(f"Error initializing NeoPixels: {e}")
-            self.pixels = None
     
     def get_pixel_index(self, instrument_idx, step_idx):
         """
@@ -294,17 +321,26 @@ class LEDHandler:
 
 
 class OLEDHandler:
-    """Handles OLED display for BPM and status"""
+    """Handles OLED display with optimized drawing and mode support"""
     def __init__(self, sequencer):
         self.sequencer = sequencer
         self.device = None
         self.font_large = None
         self.font_small = None
         self.update_counter = 0
-        self.last_bpm = 0
         
-        # Metronome icon (34x34px) - converted from your Arduino bitmap
-        icon_data = [
+        # Track state to avoid redraws if nothing changed
+        self.last_bpm = -1
+        self.last_mode = ""
+        self.last_vol = -1
+        
+        # Pre-allocate image buffers (Optimization)
+        self.image = Image.new('1', (OLED_WIDTH, OLED_HEIGHT))
+        self.draw = ImageDraw.Draw(self.image)
+        
+        # --- Bitmaps ---
+        # Metronome (34x34)
+        metro_bytes = [
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00,
             0x00, 0x03, 0x00, 0x00, 0x00, 0x80, 0x07, 0x00, 0x00, 0x00, 0x80, 0x07, 0x00, 0x00, 0x00, 0xc0,
             0x0f, 0x00, 0x00, 0x00, 0xc0, 0x0c, 0x03, 0x00, 0x00, 0xe0, 0x1c, 0x03, 0x00, 0x00, 0x60, 0x18,
@@ -317,25 +353,24 @@ class OLEDHandler:
             0x00, 0x70, 0x00, 0x00, 0x38, 0x00, 0xe0, 0xff, 0xff, 0x1f, 0x00, 0xc0, 0xff, 0xff, 0x0f, 0x00,
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
         ]
+        self.icon_metro = self._create_bitmap(metro_bytes, 34, 34)
+
+        # Speaker (34x34) - Simple approximate bitmap
+        # Just a placeholder shape logic here for brevity, usually you'd have hex data
+        self.icon_vol = Image.new('1', (34, 34), 0)
+        d = ImageDraw.Draw(self.icon_vol)
+        d.polygon([(10,12), (10,22), (18,28), (18,6)], fill=1, outline=1) # Body
+        d.rectangle((4,12, 10,22), fill=1) # Back
+        # Sound waves
+        d.arc((10, 0, 34, 34), -45, 45, fill=1)
+        d.arc((5, 5, 29, 29), -45, 45, fill=1)
+
+        # FX Icon (Gear)
+        self.icon_fx = Image.new('1', (34, 34), 0)
+        d_fx = ImageDraw.Draw(self.icon_fx)
+        d_fx.ellipse((8, 8, 26, 26), outline=1)
+        d_fx.ellipse((14, 14, 20, 20), fill=1)
         
-        # Convert XBM bitmap to PIL Image
-        # XBM format is LSB first, so we need to reverse bit order in each byte
-        self.metronome_icon = Image.new('1', (34, 34))
-        pixels = []
-        bytes_per_row = (34 + 7) // 8  # 5 bytes per row
-        
-        for row in range(34):
-            for col in range(34):
-                byte_idx = row * bytes_per_row + col // 8
-                bit_idx = col % 8
-                if byte_idx < len(icon_data):
-                    # XBM uses LSB first bit ordering
-                    bit_value = (icon_data[byte_idx] >> bit_idx) & 1
-                    pixels.append(255 if bit_value else 0)
-                else:
-                    pixels.append(0)
-        
-        self.metronome_icon.putdata(pixels)
         
         if not OLED_AVAILABLE:
             print("OLED disabled - libraries not available")
@@ -368,44 +403,71 @@ class OLEDHandler:
             
             # Clear display
             self.device.clear()
-            
-            print(f"OLED display initialized at 0x{OLED_I2C_ADDR:02X}")
-            
         except Exception as e:
             print(f"Error initializing OLED: {e}")
             self.device = None
+
+    def _create_bitmap(self, data, w, h):
+        img = Image.new('1', (w, h))
+        pixels = []
+        bytes_per_row = (w + 7) // 8
+        for row in range(h):
+            for col in range(w):
+                byte_idx = row * bytes_per_row + col // 8
+                bit_idx = col % 8
+                if byte_idx < len(data):
+                    val = (data[byte_idx] >> bit_idx) & 1
+                    pixels.append(255 if val else 0)
+                else: pixels.append(0)
+        img.putdata(pixels)
+        return img
     
     def update(self):
         """Update OLED display with current BPM and status"""
         if self.device is None:
             return
         
-        # Only update every 10th frame (10Hz) or when BPM changes to reduce I2C traffic
+        # Update logic: Redraw if mode, bpm, or volume changes, OR every 20th frame (heartbeat)
+        state_changed = (self.sequencer.bpm != self.last_bpm or 
+                         self.sequencer.mode != self.last_mode or
+                         self.sequencer.volume != self.last_vol)
+        
         self.update_counter += 1
-        if self.sequencer.bpm == self.last_bpm and self.update_counter < 10:
+        if not state_changed and self.update_counter < 20:
             return
         
         self.update_counter = 0
         self.last_bpm = self.sequencer.bpm
+        self.last_mode = self.sequencer.mode
+        self.last_vol = self.sequencer.volume
         
         try:
-            # Create image for drawing
-            image = Image.new('1', (OLED_WIDTH, OLED_HEIGHT))
-            draw = ImageDraw.Draw(image)
+            # Clear existing image buffer
+            self.draw.rectangle((0, 0, OLED_WIDTH, OLED_HEIGHT), fill=0)
             
-            # Draw metronome icon at top left
-            image.paste(self.metronome_icon, (10, 6))
+            # Common Elements
+            status_text = "Running" if self.sequencer.is_playing else "Stopped"
+            self.draw.text((10, 50), f"{self.sequencer.mode} | {status_text}", font=self.font_small, fill=255)
+
+            # Mode Specifics
+            if self.sequencer.mode == 'BPM':
+                self.image.paste(self.icon_metro, (10, 6))
+                self.draw.text((62, 10), str(self.sequencer.bpm), font=self.font_large, fill=255)
             
-            # Draw BPM number (large)
-            bpm_text = str(self.sequencer.bpm)
-            draw.text((62, 10), bpm_text, font=self.font_large, fill=255)
-            
-            # Draw status text at bottom
-            status_text = "1 bar - 1/8 notes"
-            draw.text((10, 50), status_text, font=self.font_small, fill=255)
-            
-            # Display the image
-            self.device.display(image)
+            elif self.sequencer.mode == 'VOL':
+                self.image.paste(self.icon_vol, (10, 6))
+                vol_percent = int(self.sequencer.volume * 100)
+                self.draw.text((62, 10), f"{vol_percent}%", font=self.font_large, fill=255)
+                # Draw Volume Bar
+                self.draw.rectangle((62, 40, 120, 44), outline=1)
+                fill_width = int(58 * self.sequencer.volume)
+                self.draw.rectangle((62, 40, 62 + fill_width, 44), fill=1)
+
+            elif self.sequencer.mode == 'FX':
+                self.image.paste(self.icon_fx, (10, 6))
+                self.draw.text((62, 10), "N/A", font=self.font_large, fill=255)
+
+            self.device.display(self.image)
             
         except Exception as e:
             print(f"Error updating OLED: {e}")
@@ -546,6 +608,11 @@ class Sequencer:
     """Main sequencer engine"""
     def __init__(self, bpm=120):
         self.bpm = bpm
+        self.volume = 0.8  # Default volume 80%
+        self.modes = ['BPM', 'VOL', 'FX']
+        self.mode_idx = 0
+        self.mode = self.modes[self.mode_idx]
+        
         self.current_step = 0
         self.pattern = np.zeros((NUM_INSTRUMENTS, NUM_STEPS), dtype=bool)
         self.is_playing = False
@@ -598,19 +665,12 @@ class Sequencer:
     def _create_placeholder_sample(self, instrument_name):
         """Create a simple beep as placeholder"""
         duration = 0.2
-        samples = int(SAMPLE_RATE * duration)
-        t = np.linspace(0, duration, samples)
+        t = np.linspace(0, duration, int(SAMPLE_RATE * duration))
         freq = {'kick': 60, 'snare': 200, 'hihat': 8000}.get(instrument_name, 440)
-        data = np.sin(2 * np.pi * freq * t) * 0.3
-        envelope = np.exp(-t * 10)
-        data = (data * envelope).astype(np.float32)
-        
-        # Create a minimal DrumSample-like object
-        class PlaceholderSample:
-            def __init__(self, data):
-                self.data = data
-        
-        return PlaceholderSample(data)
+        data = (np.sin(2 * np.pi * freq * t) * 0.3 * np.exp(-t * 10)).astype(np.float32)
+        class PS: 
+            def __init__(self, d): self.data = d
+        return PS(data)
     
     def toggle_step(self, instrument_idx, step_idx):
         """Toggle a step on/off for a given instrument"""
@@ -624,14 +684,20 @@ class Sequencer:
         self.bpm = max(40, min(240, bpm))  # Clamp between 40-240 BPM
         print(f"BPM: {self.bpm}")
     
+    def set_volume(self, vol):
+        self.volume = max(0.0, min(1.0, vol))
+    
+    def cycle_mode(self):
+        self.mode_idx = (self.mode_idx + 1) % len(self.modes)
+        self.mode = self.modes[self.mode_idx]
+
     def trigger_samples(self, step):
         """Trigger samples for the current step"""
         with self.lock:
             for inst_idx, instrument_name in enumerate(INSTRUMENT_NAMES):
                 if self.pattern[inst_idx, step]:
                     # Randomly select a sample from this instrument's bank
-                    sample_bank = self.sample_banks[instrument_name]
-                    selected_sample = random.choice(sample_bank)
+                    selected_sample = random.choice(self.sample_banks[instrument_name])
                     
                     # Add sample to active voices with position counter
                     self.active_voices.append({
@@ -672,6 +738,9 @@ class Sequencer:
             # Remove finished voices (in reverse to maintain indices)
             for i in reversed(voices_to_remove):
                 self.active_voices.pop(i)
+            
+            # Apply Master Volume
+            outdata[:] *= self.volume
     
     def sequencer_thread(self):
         """Main sequencer loop running in separate thread"""
@@ -753,7 +822,6 @@ def main():
     touch = TouchHandler(seq, gpio_handle, use_irq=True)
     
     # Initialize OLED display
-    time.sleep(0.1)  # Small delay before I2C operations
     oled = OLEDHandler(seq)
 
     # Initialize LED handler
@@ -777,58 +845,27 @@ def main():
     seq.start()
     
     print("\nSequencer running.")
-    print("- Touch pads to toggle steps")
-    print("- Rotate encoder to change BPM")
-    print("- Press encoder button to start/stop")
     print("- LEDs: Red=Kick, Green=Snare, Blue=Hihat, White=Current step")
     print("Press Ctrl+C to stop.\n")
     
     # Main loop - update LEDs and OLED (touch and encoder handled by interrupts)
     try:
         while True:
-            touch.poll()  # No-op if using IRQ mode
             leds.update()
             oled.update()
+            touch.poll()  # No-op if using IRQ mode
             encoder.poll()  # No-op in interrupt mode
-            time.sleep(0.01)  # Poll at 100Hz
+            time.sleep(0.05) # 20 FPS
     except KeyboardInterrupt:
         print("\nStopping...")
     except Exception as e:
         print(f"\nError in main loop: {e}")
     finally:
-        # Ensure cleanup happens
-        try:
-            seq.stop()
-        except:
-            pass
-        
-        try:
-            encoder.cleanup()
-        except:
-            pass
-        
-        try:
-            touch.cleanup()
-        except:
-            pass
-        
-        # Turn off LEDs
-        try:
-            if leds.pixels:
-                leds.pixels.fill((0, 0, 0))
-                leds.pixels.show()
-        except:
-            pass
-        
-        # Close GPIO handle
-        if gpio_handle is not None:
-            try:
-                lgpio.gpiochip_close(gpio_handle)
-            except:
-                pass
-        
-        print("Cleanup complete")
-
+        seq.stop()
+        encoder.cleanup()
+        touch.cleanup()
+        if leds.pixels: leds.pixels.fill((0,0,0)); leds.pixels.show()
+        if gpio_handle: lgpio.gpiochip_close(gpio_handle)
 
 if __name__ == "__main__":
     main()
