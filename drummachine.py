@@ -685,7 +685,7 @@ class Sequencer:
     
     def set_bpm(self, bpm):
         """Update tempo"""
-        self.bpm = max(40, min(240, bpm))  # Clamp between 40-240 BPM
+        self.bpm = max(40, min(300, bpm))  # Clamp between 40-300 BPM
         print(f"BPM: {self.bpm}")
     
     def set_volume(self, vol):
