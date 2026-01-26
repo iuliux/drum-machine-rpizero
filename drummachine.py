@@ -216,6 +216,8 @@ class RotaryEncoder:
                     # Short Press: Toggle Play/Stop
                     if self.sequencer.is_playing:
                         self.sequencer.stop()
+                        # FIXME: making this a way to kill the script, for now
+                        sys.exit(0)
                     else:
                         self.sequencer.start()
                         
