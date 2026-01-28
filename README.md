@@ -1,4 +1,6 @@
-Added to `/boot/firmware/config.txt`:
+## Configure I2S
+
+Add line to `/boot/firmware/config.txt`:
 
 ```
 dtoverlay=hifiberry-dac
@@ -6,6 +8,7 @@ dtoverlay=hifiberry-dac
 
 This configures the I2S pins (BCM 18, 19, 21 for BCLK, LRCLK, DATA).
 
+## Install dependencies
 
 ```
 sudo apt update
@@ -20,8 +23,13 @@ sudo apt install libportaudio2
 sudo pip install -r requirements.txt --break-system-packages
 ```
 
+## Utils
+
 To check I2C devices:
 
 ```
 sudo i2cdetect -y 1
 ```
+
+## Run (and update) on startup
+
