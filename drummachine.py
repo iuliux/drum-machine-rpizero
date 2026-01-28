@@ -861,7 +861,7 @@ def main():
             oled.update()
             touch.poll()  # No-op if using IRQ mode
             encoder.poll()  # Long press detection
-            time.sleep(0.05) # 20 FPS
+            time.sleep(0.01)  # 100 FPS for smooth LEDs
     except KeyboardInterrupt:
         print("\nStopping...")
     except Exception as e:
