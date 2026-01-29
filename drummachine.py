@@ -145,7 +145,7 @@ class RotaryEncoder:
         self.long_press_triggered = False
         self.LONG_PRESS_THRESHOLD = 0.6  # seconds
         
-        if not ROTARY_ENCODER_AVAILABLE:
+        if not GPIOZERO_AVAILABLE:
             print("Rotary encoder disabled - gpiozero not available")
             return
         
@@ -232,7 +232,7 @@ class RotaryEncoder:
     
     def cleanup(self):
         """Clean up GPIO resources"""
-        if ROTARY_ENCODER_AVAILABLE and self.encoder is not None:
+        if GPIOZERO_AVAILABLE and self.encoder is not None:
             try:
                 self.encoder.close()
                 if hasattr(self, 'button'):
