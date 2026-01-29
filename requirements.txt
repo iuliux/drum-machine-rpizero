@@ -4,6 +4,6 @@ soundfile==0.13.1
 adafruit-circuitpython-mpr121==2.1.25
 rpi_ws281x==5.0.0
 adafruit-circuitpython-neopixel==6.3.21
-rpi-lgpio==0.6
+gpiozero==2.1.1
 luma.oled==3.14.0
 pillow==12.1.0

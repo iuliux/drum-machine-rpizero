@@ -39,11 +39,11 @@ except (ImportError, NotImplementedError):
     print("Warning: OLED libraries not available, running without display")
 
 try:
-    import lgpio
-    LGPIO_AVAILABLE = True
+    from gpiozero import RotaryEncoder as GPIOZeroRotaryEncoder, Button as GPIOZeroButton
+    GPIOZERO_AVAILABLE = True
 except (ImportError, RuntimeError):
-    LGPIO_AVAILABLE = False
-    print("Warning: lgpio not available, running without rotary encoder")
+    GPIOZERO_AVAILABLE = False
+    print("Warning: gpiozero not available")
 
 # Audio configuration
 SAMPLE_RATE = 44100
@@ -124,23 +124,20 @@ class DrumSample:
 
 class RotaryEncoder:
     """
-    Handles quadrature rotary encoder.
+    Handles quadrature rotary encoder using gpiozero for reliable detection.
     Features:
     - Rotate: Changes value based on current mode
     - Short Press: Toggle Play/Stop
     - Long Press: Cycle Modes (BPM -> VOL -> FX)
     """
-    def __init__(self, sequencer, gpio_handle, clk_pin=ENCODER_CLK_PIN, dt_pin=ENCODER_DT_PIN, sw_pin=ENCODER_SW_PIN):
+    def __init__(self, sequencer, clk_pin=ENCODER_CLK_PIN, dt_pin=ENCODER_DT_PIN, sw_pin=ENCODER_SW_PIN):
         self.sequencer = sequencer
-        self.gpio_handle = gpio_handle
         self.clk_pin = clk_pin
         self.dt_pin = dt_pin
         self.sw_pin = sw_pin
         
-        self.clk_last_state = None
         self.bpm_step = 5  # BPM change per detent
-        self.callback_id_clk = None
-        self.callback_id_sw = None
+        self.encoder = None
         
         # Button state for long press detection
         self.button_pressed = False
@@ -148,107 +145,100 @@ class RotaryEncoder:
         self.long_press_triggered = False
         self.LONG_PRESS_THRESHOLD = 0.6  # seconds
         
-        if not LGPIO_AVAILABLE or gpio_handle is None:
-            print("Rotary encoder disabled - lgpio not available")
+        if not ROTARY_ENCODER_AVAILABLE:
+            print("Rotary encoder disabled - gpiozero not available")
             return
         
         try:
-            # Set up GPIO pins
-            lgpio.gpio_claim_input(gpio_handle, self.clk_pin, lgpio.SET_PULL_UP)
-            lgpio.gpio_claim_input(gpio_handle, self.dt_pin, lgpio.SET_PULL_UP)
+            # Create rotary encoder with debouncing (critical for reliability)
+            # bounce_time helps filter out jitter from mechanical bouncing
+            self.encoder = GPIOZeroRotaryEncoder(
+                a=clk_pin,
+                b=dt_pin,
+                bounce_time=0.01  # 10ms debounce window
+            )
             
-            # Store initial state
-            self.clk_last_state = lgpio.gpio_read(gpio_handle, self.clk_pin)
+            # Set up rotation event handlers
+            self.encoder.when_rotated_clockwise = self._on_rotate_clockwise
+            self.encoder.when_rotated_counter_clockwise = self._on_rotate_counter_clockwise
             
-            # Set up alert (interrupt) on CLK pin for both edges
-            lgpio.gpio_claim_alert(gpio_handle, self.clk_pin, lgpio.BOTH_EDGES)
-            self.callback_id_clk = lgpio.callback(gpio_handle, self.clk_pin, lgpio.BOTH_EDGES, self._rotary_callback)
-            
-            # Button Pin
+            # Set up button if available
             if self.sw_pin:
-                lgpio.gpio_claim_input(gpio_handle, self.sw_pin, lgpio.SET_PULL_UP)
-                # Monitor BOTH edges to calculate duration
-                lgpio.gpio_claim_alert(gpio_handle, self.sw_pin, lgpio.BOTH_EDGES)
-                self.callback_id_sw = lgpio.callback(gpio_handle, self.sw_pin, lgpio.BOTH_EDGES, self._button_callback)
+                from gpiozero import Button as GPIOZeroButton
+                self.button = GPIOZeroButton(
+                    sw_pin,
+                    bounce_time=0.02,
+                    hold_time=self.LONG_PRESS_THRESHOLD
+                )
+                self.button.when_pressed = self._button_pressed
+                self.button.when_released = self._button_released
+                self.button.when_held = self._button_held
             
-            print(f"Rotary encoder initialized on GPIO {clk_pin}/{dt_pin} (interrupt mode)")
+            print(f"Rotary encoder initialized on GPIO {clk_pin}/{dt_pin} (gpiozero mode)")
             
         except Exception as e:
             print(f"Error initializing rotary encoder: {e}")
+            self.encoder = None
     
-    def _rotary_callback(self, chip, gpio, level, tick):
-        """Interrupt callback for rotary encoder rotation"""
+    def _on_rotate_clockwise(self):
+        """Handle clockwise rotation"""
+        self._handle_rotation(1)
+    
+    def _on_rotate_counter_clockwise(self):
+        """Handle counter-clockwise rotation"""
+        self._handle_rotation(-1)
+    
+    def _handle_rotation(self, direction):
+        """Process rotation in a given direction"""
         try:
-            dt_state = lgpio.gpio_read(self.gpio_handle, self.dt_pin)
-            
-            if level == 1 and self.clk_last_state == 0:
-                direction = 1 if dt_state != level else -1
-                
-                # Handle value change based on current mode
-                if self.sequencer.mode == 'BPM':
-                    new_bpm = self.sequencer.bpm + direction * self.bpm_step
-                    self.sequencer.set_bpm(new_bpm)
-                elif self.sequencer.mode == 'VOL':
-                    # Change volume by 5%
-                    new_vol = round(self.sequencer.volume + (direction * 0.05), 2)
-                    self.sequencer.set_volume(new_vol)
-                elif self.sequencer.mode == 'FX':
-                    # Placeholder for future FX param
-                    print("FX parameter change (Not implemented)")
-            
-            self.clk_last_state = level
-            
+            if self.sequencer.mode == 'BPM':
+                new_bpm = self.sequencer.bpm + direction * self.bpm_step
+                self.sequencer.set_bpm(new_bpm)
+            elif self.sequencer.mode == 'VOL':
+                # Change volume by 5%
+                new_vol = round(self.sequencer.volume + (direction * 0.05), 2)
+                self.sequencer.set_volume(new_vol)
+            elif self.sequencer.mode == 'FX':
+                # Placeholder for future FX param
+                print("FX parameter change (Not implemented)")
         except Exception as e:
-            print(f"Error in rotary callback: {e}")
+            print(f"Error handling rotation: {e}")
     
-    def _button_callback(self, chip, gpio, level, tick):
-        """Interrupt callback for encoder button press"""
-        try:
-            # level 0 = Pressed (Active Low), level 1 = Released
-            if level == 0:
-                self.button_pressed = True
-                self.button_press_time = time.time()
-                self.long_press_triggered = False
+    def _button_pressed(self):
+        """Called when button is initially pressed"""
+        self.button_pressed = True
+        self.long_press_triggered = False
+    
+    def _button_released(self):
+        """Called when button is released"""
+        self.button_pressed = False
+        # If we released and haven't triggered long press yet, it's a short press
+        if not self.long_press_triggered:
+            # Short Press: Toggle Play/Stop
+            if self.sequencer.is_playing:
+                # FIXME: making this a way to kill the script, for now
+                import sys
+                sys.exit()
             else:
-                self.button_pressed = False
-                # If we released and haven't triggered long press yet, it's a short press
-                if not self.long_press_triggered:
-                    # Short Press: Toggle Play/Stop
-                    if self.sequencer.is_playing:
-                        # FIXME: making this a way to kill the script, for now
-                        sys.exit()
-                        self.sequencer.stop()
-                    else:
-                        self.sequencer.start()
-                        
-        except Exception as e:
-            print(f"Error in button callback: {e}")
+                self.sequencer.start()
     
-    def poll(self):
-        """Poll for long press events (called from main loop)"""
-        # Check if button is held down long enough for mode switch
-        if self.button_pressed and not self.long_press_triggered:
-            if time.time() - self.button_press_time > self.LONG_PRESS_THRESHOLD:
-                # Trigger Long Press Action immediately
-                self.sequencer.cycle_mode()
-                print(f"Mode switched to: {self.sequencer.mode}")
-                self.long_press_triggered = True
+    def _button_held(self):
+        """Called when button has been held for hold_time"""
+        if not self.long_press_triggered:
+            self.long_press_triggered = True
+            # Switch modes
+            self.sequencer.cycle_mode()
+            print(f"Mode switched to: {self.sequencer.mode}")
     
     def cleanup(self):
         """Clean up GPIO resources"""
-        if LGPIO_AVAILABLE and self.gpio_handle is not None:
+        if ROTARY_ENCODER_AVAILABLE and self.encoder is not None:
             try:
-                # Cancel callbacks
-                if self.callback_id_clk is not None:
-                    lgpio.callback_cancel(self.callback_id_clk)
-                if self.callback_id_sw is not None:
-                    lgpio.callback_cancel(self.callback_id_sw)
-                
-                # Free GPIO pins
-                lgpio.gpio_free(self.gpio_handle, self.clk_pin)
-                lgpio.gpio_free(self.gpio_handle, self.dt_pin)
-                if self.sw_pin: lgpio.gpio_free(self.gpio_handle, self.sw_pin)
-            except: pass
+                self.encoder.close()
+                if hasattr(self, 'button'):
+                    self.button.close()
+            except:
+                pass
 
 class LEDHandler:
     """Handles WS2812B NeoPixel LED strip display"""
@@ -480,16 +470,15 @@ class OLEDHandler:
 
 
 class TouchHandler:
-    """Handles MPR121 capacitive touch sensors"""
-    def __init__(self, sequencer, gpio_handle, use_irq=True):
+    """Handles MPR121 capacitive touch sensors with gpiozero IRQ monitoring"""
+    def __init__(self, sequencer, use_irq=True):
         self.sequencer = sequencer
-        self.gpio_handle = gpio_handle
         self.mpr121_1 = None
         self.mpr121_2 = None
         self.last_touched_1 = 0
         self.last_touched_2 = 0
-        self.use_irq = use_irq and LGPIO_AVAILABLE and gpio_handle is not None
-        self.callback_id = None
+        self.use_irq = use_irq and GPIOZERO_AVAILABLE
+        self.irq_button = None
         
         if not MPR121_AVAILABLE:
             print("Touch sensors disabled - MPR121 library not available")
@@ -508,23 +497,27 @@ class TouchHandler:
             
             print(f"MPR121 sensors initialized at 0x{MPR121_ADDR_1:02X} and 0x{MPR121_ADDR_2:02X}")
             
-            # Set up shared IRQ pin if using interrupt mode
+            # Set up shared IRQ pin using gpiozero if using interrupt mode
             if self.use_irq:
-                lgpio.gpio_claim_input(gpio_handle, MPR121_IRQ_PIN, lgpio.SET_PULL_UP)
+                # MPR121 IRQ is active LOW, so we use pull_up=True (default)
+                # Button in gpiozero defaults to active_high=False (meaning pulled-up, active on LOW)
+                self.irq_button = GPIOZeroButton(
+                    MPR121_IRQ_PIN,
+                    pull_up=True,
+                    bounce_time=0.01
+                )
+                # When IRQ goes LOW (sensor detects touch), process both sensors
+                self.irq_button.when_pressed = self._on_irq_triggered
                 
-                # IRQ is active LOW - set up alert on falling edge
-                lgpio.gpio_claim_alert(gpio_handle, MPR121_IRQ_PIN, lgpio.FALLING_EDGE)
-                self.callback_id = lgpio.callback(gpio_handle, MPR121_IRQ_PIN, lgpio.FALLING_EDGE, self._irq_callback)
-                
-                print(f"MPR121 IRQ mode enabled on GPIO {MPR121_IRQ_PIN} (shared, interrupt mode)")
+                print(f"MPR121 IRQ mode enabled on GPIO {MPR121_IRQ_PIN} (gpiozero mode)")
             
         except Exception as e:
             print(f"Error initializing MPR121: {e}")
             self.mpr121_1 = None
             self.mpr121_2 = None
     
-    def _irq_callback(self, chip, gpio, level, tick):
-        """Interrupt callback for both MPR121 sensors (shared IRQ)"""
+    def _on_irq_triggered(self):
+        """Called when IRQ pin goes LOW (MPR121 touch detected)"""
         # Check both sensors since they share the IRQ line
         self._process_sensor(1)
         self._process_sensor(2)
@@ -598,14 +591,9 @@ class TouchHandler:
     
     def cleanup(self):
         """Clean up GPIO resources"""
-        if self.use_irq and LGPIO_AVAILABLE and self.gpio_handle is not None:
+        if self.use_irq and self.irq_button is not None:
             try:
-                # Cancel callback
-                if self.callback_id is not None:
-                    lgpio.callback_cancel(self.callback_id)
-                
-                # Free GPIO pin
-                lgpio.gpio_free(self.gpio_handle, MPR121_IRQ_PIN)
+                self.irq_button.close()
             except:
                 pass
 
@@ -614,7 +602,7 @@ class Sequencer:
     """Main sequencer engine"""
     def __init__(self, bpm=120):
         self.bpm = bpm
-        self.volume = 0.8  # Default volume 80%
+        self.volume = 0.2  # Default volume 20%
         self.modes = ['BPM', 'VOL', 'FX']
         self.mode_idx = 0
         self.mode = self.modes[self.mode_idx]
@@ -813,19 +801,11 @@ def main():
     print("Raspberry Pi Drum Machine")
     print("=" * 40)
     
-    # Open GPIO chip
-    gpio_handle = None
-    if LGPIO_AVAILABLE:
-        try:
-            gpio_handle = lgpio.gpiochip_open(0)
-        except Exception as e:
-            print(f"Warning: Could not open GPIO: {e}")
-    
     # Create sequencer
     seq = Sequencer(bpm=120)
     
-    # Initialize touch handler (use_irq=True by default)
-    touch = TouchHandler(seq, gpio_handle, use_irq=True)
+    # Initialize touch handler (gpiozero handles GPIO setup)
+    touch = TouchHandler(seq, use_irq=True)
     
     # Initialize OLED display
     oled = OLEDHandler(seq)
@@ -833,8 +813,8 @@ def main():
     # Initialize LED handler
     leds = LEDHandler(seq)
     
-    # Initialize rotary encoder
-    encoder = RotaryEncoder(seq, gpio_handle)
+    # Initialize rotary encoder (gpiozero handles its own GPIO setup)
+    encoder = RotaryEncoder(seq)
     
     # Set up a simple test pattern (for testing without touch sensors)
     # Kick on steps 0, 4
@@ -860,7 +840,6 @@ def main():
             leds.update()
             oled.update()
             touch.poll()  # No-op if using IRQ mode
-            encoder.poll()  # Long press detection
             time.sleep(0.01)  # 100 FPS for smooth LEDs
     except KeyboardInterrupt:
         print("\nStopping...")
@@ -871,7 +850,6 @@ def main():
         encoder.cleanup()
         touch.cleanup()
         if leds.pixels: leds.pixels.fill((0,0,0)); leds.pixels.show()
-        if gpio_handle: lgpio.gpiochip_close(gpio_handle)
 
 if __name__ == "__main__":
     main()
