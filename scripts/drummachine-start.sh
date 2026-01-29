@@ -3,11 +3,11 @@
 # Navigate to your project directory
 cd /home/pi/drum-machine-rpizero
 
-# Pull latest code from git
-git pull origin master
+# Pull latest code from git (non-blocking - continue even if it fails)
+git pull origin master || echo "Warning: git pull failed, continuing with current code"
 
 # Wait a moment for system to stabilize
 sleep 2
 
-# Run the drum machine
-sudo /usr/bin/python3 /home/pi/drum-machine-rpizero/drummachine.py
+# Run the drum machine with error handling
+exec sudo /usr/bin/python3 /home/pi/drum-machine-rpizero/drummachine.py
