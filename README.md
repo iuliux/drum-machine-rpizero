@@ -39,4 +39,7 @@ sudo i2cdetect -y 1
 ```
 chmod +x /home/pi/drum-machine-rpizero/scripts/setup-service.sh
 sudo sh /home/pi/drum-machine-rpizero/scripts/setup-service.sh
+
+# To stop it
+sudo systemctl stop drummachine
 ```

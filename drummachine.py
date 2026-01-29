@@ -304,9 +304,8 @@ class LEDHandler:
                         # Active step: instrument color at medium brightness
                         self.pixels[pixel_idx] = base_color
                     else:
-                        # Inactive step: very dim instrument color
-                        dim_factor = 0.05
-                        self.pixels[pixel_idx] = tuple(int(c * dim_factor) for c in base_color)
+                        # Inactive step: completely off
+                        self.pixels[pixel_idx] = (0, 0, 0)
             
             self.pixels.show()
             
