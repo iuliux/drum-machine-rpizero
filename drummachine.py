@@ -602,7 +602,7 @@ class Sequencer:
     """Main sequencer engine"""
     def __init__(self, bpm=120):
         self.bpm = bpm
-        self.volume = 0.2  # Default volume 20%
+        self.volume = 0.1  # Default volume 10%
         self.modes = ['BPM', 'VOL', 'FX']
         self.mode_idx = 0
         self.mode = self.modes[self.mode_idx]
