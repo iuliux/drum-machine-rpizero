@@ -36,3 +36,7 @@ sudo i2cdetect -y 1
 
 ## Run (and update) on startup
 
+```
+chmod +x /home/pi/drum-machine-rpizero/scripts/setup-service.sh
+sudo sh /home/pi/drum-machine-rpizero/scripts/setup-service.sh
+```
