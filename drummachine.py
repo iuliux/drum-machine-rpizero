@@ -65,6 +65,11 @@ NEOPIXEL_PIN = board.D12 if NEOPIXEL_AVAILABLE else None  # GPIO 12 (PWM0 - alte
 NUM_PIXELS = 24  # 8 LEDs per instrument × 3 instruments
 PIXEL_BRIGHTNESS = 0.3  # 0.0 to 1.0
 
+# Step Indicator Strip configuration
+STEP_INDICATOR_PIN = board.D13 if NEOPIXEL_AVAILABLE else None  # GPIO 13 (PWM1)
+NUM_STEP_LEDS = 15  # Physical LEDs on strip (using every other one = 8 steps)
+STEP_BRIGHTNESS = 0.5  # 0.0 to 1.0
+
 # Rotary Encoder configuration
 ENCODER_CLK_PIN = 17  # GPIO 17 for CLK (A pin)
 ENCODER_DT_PIN = 27   # GPIO 27 for DT (B pin)
@@ -237,6 +242,66 @@ class RotaryEncoder:
                     self.button.close()
             except:
                 pass
+
+
+class StepIndicatorHandler:
+    """Handles WS2812B step indicator strip (edge lighting)"""
+    def __init__(self, sequencer):
+        self.sequencer = sequencer
+        self.pixels = None
+        self.last_step = -1  # Track last step to avoid unnecessary updates
+        
+        if not NEOPIXEL_AVAILABLE:
+            print("Step indicator disabled - NeoPixel library not available")
+            return
+        
+        try:
+            # Initialize step indicator strip
+            self.pixels = neopixel.NeoPixel(
+                STEP_INDICATOR_PIN,
+                NUM_STEP_LEDS,
+                brightness=STEP_BRIGHTNESS,
+                auto_write=False,
+                pixel_order=neopixel.GRB
+            )
+            
+            # Clear all pixels
+            self.pixels.fill((0, 0, 0))
+            self.pixels.show()
+            
+            print(f"Step indicator initialized: {NUM_STEP_LEDS} LEDs on pin {STEP_INDICATOR_PIN}")
+            
+        except Exception as e:
+            print(f"Error initializing step indicator: {e}")
+            self.pixels = None
+    
+    def update(self):
+        """Update step indicator - only when step changes"""
+        if self.pixels is None:
+            return
+        
+        current_step = self.sequencer.current_step
+        
+        # Only update if step changed
+        if current_step == self.last_step:
+            return
+        
+        self.last_step = current_step
+        
+        try:
+            # Clear all LEDs
+            self.pixels.fill((0, 0, 0))
+            
+            # Light up current step (every other LED: 0, 2, 4, 6, 8, 10, 12, 14)
+            if self.sequencer.is_playing:
+                led_index = current_step * 2  # Map step 0-7 to LED 0,2,4,6,8,10,12,14
+                self.pixels[led_index] = (255, 255, 255)  # White
+            
+            self.pixels.show()
+            
+        except Exception as e:
+            print(f"Error updating step indicator: {e}")
+
 
 class LEDHandler:
     """Handles WS2812B NeoPixel LED strip display"""
@@ -809,6 +874,7 @@ def main():
 
     # Initialize LED handler
     leds = LEDHandler(seq)
+    step_indicator = StepIndicatorHandler(seq)
     
     # Initialize rotary encoder (gpiozero handles its own GPIO setup)
     encoder = RotaryEncoder(seq)
@@ -835,6 +901,7 @@ def main():
     try:
         while True:
             leds.update()
+            step_indicator.update()  # Only updates when step changes
             oled.update()
             touch.poll()  # No-op if using IRQ mode
             time.sleep(0.01)  # 100 FPS for smooth LEDs
@@ -847,6 +914,7 @@ def main():
         encoder.cleanup()
         touch.cleanup()
         if leds.pixels: leds.pixels.fill((0,0,0)); leds.pixels.show()
+        if step_indicator.pixels: step_indicator.pixels.fill((0,0,0)); step_indicator.pixels.show()
 
 if __name__ == "__main__":
     main()
