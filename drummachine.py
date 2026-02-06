@@ -56,9 +56,10 @@ INSTRUMENT_NAMES = ['kick', 'snare', 'hihat']
 NUM_INSTRUMENTS = len(INSTRUMENT_NAMES)
 
 # MPR121 configuration
-MPR121_ADDR_1 = 0x5A  # First MPR121 - handles kick (8 pads) + snare (4 pads)
-MPR121_ADDR_2 = 0x5B  # Second MPR121 - handles snare (4 pads) + hihat (8 pads)
-MPR121_IRQ_PIN = 4    # GPIO 4 - shared IRQ for both MPR121s (optional but recommended)
+MPR121_ADDR_1 = 0x5A  # First MPR121 - left half (steps 0-3)
+MPR121_ADDR_2 = 0x5B  # Second MPR121 - right half (steps 4-7)
+MPR121_IRQ_PIN_1 = 4  # GPIO 4 - IRQ for sensor 1
+MPR121_IRQ_PIN_2 = 5  # GPIO 5 - IRQ for sensor 2
 
 # NeoPixel configuration
 NEOPIXEL_PIN = board.D12 if NEOPIXEL_AVAILABLE else None  # GPIO 12 (PWM0 - alternative)
@@ -540,7 +541,8 @@ class TouchHandler:
         self.last_touched_1 = 0
         self.last_touched_2 = 0
         self.use_irq = use_irq and GPIOZERO_AVAILABLE
-        self.irq_button = None
+        self.irq_button_1 = None
+        self.irq_button_2 = None
         
         if not MPR121_AVAILABLE:
             print("Touch sensors disabled - MPR121 library not available")
@@ -559,29 +561,38 @@ class TouchHandler:
             
             print(f"MPR121 sensors initialized at 0x{MPR121_ADDR_1:02X} and 0x{MPR121_ADDR_2:02X}")
             
-            # Set up shared IRQ pin using gpiozero if using interrupt mode
+            # Set up separate IRQ pins using gpiozero if using interrupt mode
             if self.use_irq:
                 # MPR121 IRQ is active LOW, so we use pull_up=True (default)
-                # Button in gpiozero defaults to active_high=False (meaning pulled-up, active on LOW)
-                self.irq_button = GPIOZeroButton(
-                    MPR121_IRQ_PIN,
+                # Create button for sensor 1
+                self.irq_button_1 = GPIOZeroButton(
+                    MPR121_IRQ_PIN_1,
                     pull_up=True,
                     bounce_time=0.01
                 )
-                # When IRQ goes LOW (sensor detects touch), process both sensors
-                self.irq_button.when_pressed = self._on_irq_triggered
+                self.irq_button_1.when_pressed = self._on_irq_triggered_1
                 
-                print(f"MPR121 IRQ mode enabled on GPIO {MPR121_IRQ_PIN} (gpiozero mode)")
+                # Create button for sensor 2
+                self.irq_button_2 = GPIOZeroButton(
+                    MPR121_IRQ_PIN_2,
+                    pull_up=True,
+                    bounce_time=0.01
+                )
+                self.irq_button_2.when_pressed = self._on_irq_triggered_2
+                
+                print(f"MPR121 IRQ mode enabled: GPIO {MPR121_IRQ_PIN_1} (sensor 1), GPIO {MPR121_IRQ_PIN_2} (sensor 2)")
             
         except Exception as e:
             print(f"Error initializing MPR121: {e}")
             self.mpr121_1 = None
             self.mpr121_2 = None
     
-    def _on_irq_triggered(self):
-        """Called when IRQ pin goes LOW (MPR121 touch detected)"""
-        # Check both sensors since they share the IRQ line
+    def _on_irq_triggered_1(self):
+        """Called when sensor 1 IRQ pin goes LOW"""
         self._process_sensor(1)
+    
+    def _on_irq_triggered_2(self):
+        """Called when sensor 2 IRQ pin goes LOW"""
         self._process_sensor(2)
     
     def _process_sensor(self, sensor_num):
@@ -657,9 +668,12 @@ class TouchHandler:
     
     def cleanup(self):
         """Clean up GPIO resources"""
-        if self.use_irq and self.irq_button is not None:
+        if self.use_irq:
             try:
-                self.irq_button.close()
+                if self.irq_button_1 is not None:
+                    self.irq_button_1.close()
+                if self.irq_button_2 is not None:
+                    self.irq_button_2.close()
             except:
                 pass
 
