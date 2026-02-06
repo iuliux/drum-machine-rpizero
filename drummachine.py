@@ -616,28 +616,32 @@ class TouchHandler:
         """
         Map touch sensor and pad number to instrument and step.
         
-        Layout:
-        Sensor 1 (0x5A):
-          Pads 0-7: Kick steps 0-7
-          Pads 8-11: Snare steps 0-3
-        Sensor 2 (0x5B):
-          Pads 0-3: Snare steps 4-7
-          Pads 4-11: Hihat steps 0-7
+        Layout (Left/Right Split):
+        Sensor 1 (0x5A) - Left Half (steps 0-3):
+          Pads 0-3: Kick steps 0-3
+          Pads 4-7: Snare steps 0-3
+          Pads 8-11: Hihat steps 0-3
+        Sensor 2 (0x5B) - Right Half (steps 4-7):
+          Pads 0-3: Kick steps 4-7
+          Pads 4-7: Snare steps 4-7
+          Pads 8-11: Hihat steps 4-7
         """
-        if sensor_num == 1:
-            if pad_num < 8:
-                # Kick
-                return 0, pad_num
-            else:
-                # Snare (first 4 steps)
-                return 1, pad_num - 8
-        else:  # sensor_num == 2
-            if pad_num < 4:
-                # Snare (last 4 steps)
-                return 1, pad_num + 4
-            else:
-                # Hihat
-                return 2, pad_num - 4
+        # Determine instrument from pad number (same for both sensors)
+        if pad_num < 4:
+            instrument = 0  # Kick
+            pad_step = pad_num
+        elif pad_num < 8:
+            instrument = 1  # Snare
+            pad_step = pad_num - 4
+        else:  # pad_num < 12
+            instrument = 2  # Hihat
+            pad_step = pad_num - 8
+        
+        # Add sensor offset (0 for sensor 1, 4 for sensor 2)
+        step_offset = 0 if sensor_num == 1 else 4
+        step = pad_step + step_offset
+        
+        return instrument, step
     
     def poll(self):
         """Poll touch sensors in non-IRQ mode, no-op if using interrupts"""
