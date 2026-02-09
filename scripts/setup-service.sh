@@ -10,7 +10,7 @@ echo "Drum Machine Systemd Service Setup"
 echo "======================================"
 
 # Check if running as root
-if [ "$EUID" -ne 0 ]; then
+if [ "${EUID:-$(id -u)}" -ne 0 ]; then
    echo "This script must be run as root (use: sudo bash setup-service.sh)"
    exit 1
 fi
