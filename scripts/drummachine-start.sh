@@ -3,6 +3,9 @@
 # Navigate to your project directory
 cd /home/pi/drum-machine-rpizero
 
+# Configure git to allow this directory (owned by pi) to be accessed by root
+git config --global --add safe.directory /home/pi/drum-machine-rpizero
+
 # Pull latest code from git (non-blocking - continue even if it fails)
 git pull origin master || echo "Warning: git pull failed, continuing with current code"
 
