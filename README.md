@@ -43,3 +43,17 @@ sudo sh /home/pi/drum-machine-rpizero/scripts/setup-service.sh
 # To stop it
 sudo systemctl stop drummachine
 ```
+
+## System optimizations
+
+```
+#Disable Bluetooth
+sudo systemctl disable bluetooth
+sudo systemctl stop bluetooth
+
+#Reduce swappiness
+sudo sysctl vm.swappiness=10
+
+# CPU performance mode
+echo performance | sudo tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor
+```

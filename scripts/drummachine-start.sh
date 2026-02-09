@@ -10,4 +10,5 @@ git pull origin master || echo "Warning: git pull failed, continuing with curren
 sleep 2
 
 # Run the drum machine with error handling
-exec sudo /usr/bin/python3 /home/pi/drum-machine-rpizero/drummachine.py
+# Run directly as the service user (systemd will apply realtime scheduling)
+exec /usr/bin/python3 /home/pi/drum-machine-rpizero/drummachine.py

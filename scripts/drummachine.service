@@ -9,8 +9,8 @@ After=rc-local.service
 ConditionVirtualization=!container
 
 [Service]
-# Run as the pi user (adjust if your user is different)
-User=pi
+# Run as root (required for real-time scheduling on dedicated device)
+User=root
 WorkingDirectory=/home/pi/drum-machine-rpizero
 
 # Give the system 10 seconds to stabilize after network comes up
@@ -25,6 +25,12 @@ RestartSec=10
 
 # Increase default resource limits if needed for audio
 LimitNOFILE=4096
+
+# Use real-time FIFO scheduling via systemd (preferred over calling `chrt` from the script)
+CPUSchedulingPolicy=fifo
+CPUSchedulingPriority=80
+# Allow the real-time priority (matches CPUSchedulingPriority)
+LimitRTPRIO=80
 
 # Log output to journal (viewable with: journalctl -u drummachine -f)
 StandardOutput=journal
