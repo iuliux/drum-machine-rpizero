@@ -9,6 +9,10 @@ git pull origin master || echo "Warning: git pull failed, continuing with curren
 # Wait a moment for system to stabilize
 sleep 2
 
+# Configure GPIO environment for systemd service context
+# Use BCM factory (direct GPIO access) instead of auto-detection
+export GPIOZERO_PIN_FACTORY=lgpio
+
 # Run the drum machine with error handling
 # Run directly as the service user (systemd will apply realtime scheduling)
 exec /usr/bin/python3 /home/pi/drum-machine-rpizero/drummachine.py

@@ -3,6 +3,8 @@
 Simple 8-step, 3-instrument drum machine sequencer for Raspberry Pi Zero 2 W
 """
 
+import os
+import sys
 import numpy as np
 import sounddevice as sd
 import soundfile as sf
@@ -11,22 +13,30 @@ import threading
 import random
 from pathlib import Path
 
+# --- GPIO/Hardware Setup for Systemd Service ---
+# Set gpiozero factory before any GPIO imports if running as systemd service
+if os.geteuid() == 0:  # Running as root (systemd service)
+    try:
+        os.environ.setdefault('GPIOZERO_PIN_FACTORY', 'lgpio')
+    except Exception as e:
+        print(f"Warning: Could not set GPIO pin factory: {e}")
+
 # --- Hardware Import Try/Except Blocks ---
 try:
     import board
     import busio
     import adafruit_mpr121
     MPR121_AVAILABLE = True
-except (ImportError, NotImplementedError):
+except (ImportError, NotImplementedError) as e:
     MPR121_AVAILABLE = False
-    print("Warning: MPR121 libraries not available, running without touch sensors")
+    print(f"Warning: MPR121 libraries not available: {e}")
 
 try:
     import neopixel
     NEOPIXEL_AVAILABLE = True
-except (ImportError, NotImplementedError):
+except (ImportError, NotImplementedError) as e:
     NEOPIXEL_AVAILABLE = False
-    print("Warning: NeoPixel library not available, running without LEDs")
+    print(f"Warning: NeoPixel library not available: {e}")
 
 try:
     from luma.core.interface.serial import i2c
@@ -34,16 +44,16 @@ try:
     from luma.core.render import canvas
     from PIL import Image, ImageDraw, ImageFont
     OLED_AVAILABLE = True
-except (ImportError, NotImplementedError):
+except (ImportError, NotImplementedError) as e:
     OLED_AVAILABLE = False
-    print("Warning: OLED libraries not available, running without display")
+    print(f"Warning: OLED libraries not available: {e}")
 
 try:
     from gpiozero import RotaryEncoder as GPIOZeroRotaryEncoder, Button as GPIOZeroButton
     GPIOZERO_AVAILABLE = True
-except (ImportError, RuntimeError):
+except (ImportError, RuntimeError) as e:
     GPIOZERO_AVAILABLE = False
-    print("Warning: gpiozero not available")
+    print(f"Warning: gpiozero not available: {e}")
 
 # Audio configuration
 SAMPLE_RATE = 44100
