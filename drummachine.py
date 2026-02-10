@@ -623,10 +623,12 @@ class TouchHandler:
     
     def _on_irq_triggered_1(self):
         """Called when sensor 1 IRQ pin goes LOW"""
+        print("IRQ triggered for touch sensor 1")
         self._process_sensor(1)
     
     def _on_irq_triggered_2(self):
         """Called when sensor 2 IRQ pin goes LOW"""
+        print("IRQ triggered for touch sensor 2")
         self._process_sensor(2)
     
     def _process_sensor(self, sensor_num):
