@@ -346,9 +346,19 @@ class LEDHandler:
     def get_pixel_index(self, instrument_idx, step_idx):
         """
         Map instrument and step to LED index.
-        Layout: [Kick 0-7][Snare 0-7][Hihat 0-7]
+        Physical layout (daisy-chained serpentine):
+        - Row 0 (Kick):   LEDs 0-7   (left to right)
+        - Row 1 (Snare):  LEDs 15-8  (right to left, reversed)
+        - Row 2 (Hihat):  LEDs 16-23 (left to right)
         """
-        return instrument_idx * NUM_STEPS + step_idx
+        if instrument_idx == 0:  # Kick: left to right
+            return step_idx
+        elif instrument_idx == 1:  # Snare: right to left (reversed)
+            return 15 - step_idx
+        elif instrument_idx == 2:  # Hihat: left to right
+            return 16 + step_idx
+        else:
+            return 0  # Fallback
     
     def update(self):
         """Update LED strip to reflect current pattern and step"""
