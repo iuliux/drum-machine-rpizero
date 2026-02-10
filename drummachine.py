@@ -584,6 +584,14 @@ class TouchHandler:
                 self.mpr121_1 = adafruit_mpr121.MPR121(i2c_bus, address=MPR121_ADDR_1)
                 print(f"MPR121 sensor 1 initialized at 0x{MPR121_ADDR_1:02X}")
                 
+                # Lock baseline to prevent multi-touch stuck states (from https://crimier.github.io/posts/mpr121_funk/)
+                time.sleep(0.2)  # Let baseline establish
+                self.mpr121_1._i2c.writeto_then_readfrom(MPR121_ADDR_1, bytes([0x5E, 0x00]))  # Disable sensor
+                time.sleep(0.1)
+                self.mpr121_1._i2c.writeto_then_readfrom(MPR121_ADDR_1, bytes([0x5E, 0b01001111]))  # Enable with baseline tracking disabled
+                time.sleep(0.1)
+                print("Sensor 1 baseline locked")
+                
                 # Set up IRQ for sensor 1 if available
                 if self.use_irq:
                     self.irq_button_1 = GPIOZeroButton(
@@ -603,6 +611,14 @@ class TouchHandler:
             try:
                 self.mpr121_2 = adafruit_mpr121.MPR121(i2c_bus, address=MPR121_ADDR_2)
                 print(f"MPR121 sensor 2 initialized at 0x{MPR121_ADDR_2:02X}")
+                
+                # Lock baseline to prevent multi-touch stuck states (from https://crimier.github.io/posts/mpr121_funk/)
+                time.sleep(0.2)  # Let baseline establish
+                self.mpr121_2._i2c.writeto_then_readfrom(MPR121_ADDR_2, bytes([0x5E, 0x00]))  # Disable sensor
+                time.sleep(0.1)
+                self.mpr121_2._i2c.writeto_then_readfrom(MPR121_ADDR_2, bytes([0x5E, 0b01001111]))  # Enable with baseline tracking disabled
+                time.sleep(0.1)
+                print("Sensor 2 baseline locked")
                 
                 # Set up IRQ for sensor 2 if available
                 if self.use_irq:
@@ -989,14 +1005,13 @@ def main():
     print("- LEDs: Red=Kick, Green=Snare, Blue=Hihat, White=Current step")
     print("Press Ctrl+C to stop.\n")
     
-    # Main loop - update LEDs and OLED (touch and encoder handled by interrupts)
+    # Main loop - update LEDs and OLED
     try:
         while True:
             leds.update()
             step_indicator.update()  # Only updates when step changes
             oled.update()
-            touch.poll()  # No-op if using IRQ mode
-            touch.watchdog_check()  # Monitor for stuck sensors
+            touch.poll()  # Poll touch sensors continuously
             time.sleep(0.01)  # 100 FPS for smooth LEDs
     except KeyboardInterrupt:
         print("\nStopping...")
