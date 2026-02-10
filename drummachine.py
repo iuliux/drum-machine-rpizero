@@ -718,12 +718,10 @@ class TouchHandler:
         if self.use_irq:
             return  # Interrupts handle everything
             
-        if self.mpr121_1 is None or self.mpr121_2 is None:
-            return
-        
-        # Polling mode - always check both sensors
-        self._process_sensor(1)
-        self._process_sensor(2)
+        if self.mpr121_1 is not None:
+            self._process_sensor(1)
+        if self.mpr121_2 is not None:
+            self._process_sensor(2)
     
     def watchdog_check(self):
         """Check if sensors are stuck and attempt recovery"""
