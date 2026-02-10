@@ -68,8 +68,8 @@ NUM_INSTRUMENTS = len(INSTRUMENT_NAMES)
 # MPR121 configuration
 MPR121_ADDR_1 = 0x5A  # First MPR121 - left half (steps 0-3)
 MPR121_ADDR_2 = 0x5B  # Second MPR121 - right half (steps 4-7)
-MPR121_IRQ_PIN_1 = 4  # GPIO 4 - IRQ for sensor 1
-MPR121_IRQ_PIN_2 = 5  # GPIO 5 - IRQ for sensor 2
+MPR121_IRQ_PIN_1 = 5  # GPIO 5 - IRQ for sensor 1
+MPR121_IRQ_PIN_2 = 4  # GPIO 4 - IRQ for sensor 2
 
 # NeoPixel configuration
 NEOPIXEL_PIN = board.D12 if NEOPIXEL_AVAILABLE else None  # GPIO 12 (PWM0 - alternative)
