@@ -843,7 +843,6 @@ class Sequencer:
             
             # Trigger samples for current step
             self.trigger_samples(self.current_step)
-            print(f"Step: {self.current_step}")
             
             # Advance step
             self.current_step = (self.current_step + 1) % NUM_STEPS
