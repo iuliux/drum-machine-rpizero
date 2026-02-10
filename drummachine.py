@@ -564,6 +564,11 @@ class TouchHandler:
         self.irq_button_1 = None
         self.irq_button_2 = None
         
+        # Watchdog for detecting stuck sensors
+        self.last_irq_time_1 = time.time()
+        self.last_irq_time_2 = time.time()
+        self.irq_timeout = 5.0  # Reset sensor if no IRQ for 5 seconds
+        
         if not MPR121_AVAILABLE:
             print("Touch sensors disabled - MPR121 library not available")
             return
@@ -623,11 +628,13 @@ class TouchHandler:
     
     def _on_irq_triggered_1(self):
         """Called when sensor 1 IRQ pin goes LOW"""
+        self.last_irq_time_1 = time.time()
         print("IRQ triggered for touch sensor 1")
         self._process_sensor(1)
     
     def _on_irq_triggered_2(self):
         """Called when sensor 2 IRQ pin goes LOW"""
+        self.last_irq_time_2 = time.time()
         print("IRQ triggered for touch sensor 2")
         self._process_sensor(2)
     
@@ -701,6 +708,38 @@ class TouchHandler:
         # Polling mode - always check both sensors
         self._process_sensor(1)
         self._process_sensor(2)
+    
+    def watchdog_check(self):
+        """Check if sensors are stuck and attempt recovery"""
+        current_time = time.time()
+        
+        # Check sensor 1
+        if self.mpr121_1 is not None:
+            if current_time - self.last_irq_time_1 > self.irq_timeout:
+                print(f"Warning: Sensor 1 stuck for {self.irq_timeout}s, attempting recovery...")
+                try:
+                    # Reset sensor 1 state
+                    self.last_touched_1 = 0
+                    # Read and clear any stuck state
+                    _ = self.mpr121_1.touched()
+                    self.last_irq_time_1 = current_time
+                    print("Sensor 1 recovery attempted")
+                except Exception as e:
+                    print(f"Error recovering sensor 1: {e}")
+        
+        # Check sensor 2
+        if self.mpr121_2 is not None:
+            if current_time - self.last_irq_time_2 > self.irq_timeout:
+                print(f"Warning: Sensor 2 stuck for {self.irq_timeout}s, attempting recovery...")
+                try:
+                    # Reset sensor 2 state
+                    self.last_touched_2 = 0
+                    # Read and clear any stuck state
+                    _ = self.mpr121_2.touched()
+                    self.last_irq_time_2 = current_time
+                    print("Sensor 2 recovery attempted")
+                except Exception as e:
+                    print(f"Error recovering sensor 2: {e}")
     
     def cleanup(self):
         """Clean up GPIO resources"""
@@ -957,6 +996,7 @@ def main():
             step_indicator.update()  # Only updates when step changes
             oled.update()
             touch.poll()  # No-op if using IRQ mode
+            touch.watchdog_check()  # Monitor for stuck sensors
             time.sleep(0.01)  # 100 FPS for smooth LEDs
     except KeyboardInterrupt:
         print("\nStopping...")
