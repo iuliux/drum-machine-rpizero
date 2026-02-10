@@ -68,8 +68,8 @@ NUM_INSTRUMENTS = len(INSTRUMENT_NAMES)
 # MPR121 configuration
 MPR121_ADDR_1 = 0x5A  # First MPR121 - left half (steps 0-3)
 MPR121_ADDR_2 = 0x5B  # Second MPR121 - right half (steps 4-7)
-MPR121_IRQ_PIN_1 = 5  # GPIO 5 - IRQ for sensor 1
-MPR121_IRQ_PIN_2 = 4  # GPIO 4 - IRQ for sensor 2
+MPR121_IRQ_PIN_1 = 4  # GPIO 4 - IRQ for sensor 1
+MPR121_IRQ_PIN_2 = 5  # GPIO 5 - IRQ for sensor 2
 
 # NeoPixel configuration
 NEOPIXEL_PIN = board.D12 if NEOPIXEL_AVAILABLE else None  # GPIO 12 (PWM0 - alternative)
@@ -662,11 +662,11 @@ class TouchHandler:
         Map touch sensor and pad number to instrument and step.
         
         Layout (Left/Right Split):
-        Sensor 1 (0x5A) - Left Half (steps 0-3):
+        Sensor 2 (0x5B) - Left Half (steps 0-3):
           Pads 0-3: Kick steps 0-3
           Pads 4-7: Snare steps 0-3
           Pads 8-11: Hihat steps 0-3
-        Sensor 2 (0x5B) - Right Half (steps 4-7):
+        Sensor 1 (0x5A) - Right Half (steps 4-7):
           Pads 0-3: Kick steps 4-7
           Pads 4-7: Snare steps 4-7
           Pads 8-11: Hihat steps 4-7
@@ -682,8 +682,8 @@ class TouchHandler:
             instrument = 2  # Hihat
             pad_step = pad_num - 8
         
-        # Add sensor offset (0 for sensor 1, 4 for sensor 2)
-        step_offset = 0 if sensor_num == 1 else 4
+        # Add sensor offset (4 for sensor 1 [right], 0 for sensor 2 [left])
+        step_offset = 4 if sensor_num == 1 else 0
         step = pad_step + step_offset
         
         return instrument, step
