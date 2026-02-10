@@ -975,7 +975,7 @@ def main():
     seq = Sequencer(bpm=120)
     
     # Initialize touch handler (gpiozero handles GPIO setup)
-    touch = TouchHandler(seq, use_irq=True)
+    touch = TouchHandler(seq, use_irq=False)
     
     # Initialize OLED display
     oled = OLEDHandler(seq)
