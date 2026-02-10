@@ -574,36 +574,50 @@ class TouchHandler:
             i2c_bus = busio.I2C(board.SCL, board.SDA, frequency=100000)
             time.sleep(0.05)  # Wait for I2C bus
             
-            # Initialize both MPR121 sensors
-            self.mpr121_1 = adafruit_mpr121.MPR121(i2c_bus, address=MPR121_ADDR_1)
+            # Initialize MPR121 sensor 1 independently
+            try:
+                self.mpr121_1 = adafruit_mpr121.MPR121(i2c_bus, address=MPR121_ADDR_1)
+                print(f"MPR121 sensor 1 initialized at 0x{MPR121_ADDR_1:02X}")
+                
+                # Set up IRQ for sensor 1 if available
+                if self.use_irq:
+                    self.irq_button_1 = GPIOZeroButton(
+                        MPR121_IRQ_PIN_1,
+                        pull_up=True,
+                        bounce_time=0.01
+                    )
+                    self.irq_button_1.when_pressed = self._on_irq_triggered_1
+                    print(f"MPR121 IRQ mode enabled for sensor 1: GPIO {MPR121_IRQ_PIN_1}")
+            except Exception as e:
+                print(f"Warning: MPR121 sensor 1 (0x{MPR121_ADDR_1:02X}) not available: {e}")
+                self.mpr121_1 = None
+            
             time.sleep(0.02)  # Delay between sensor initializations
-            self.mpr121_2 = adafruit_mpr121.MPR121(i2c_bus, address=MPR121_ADDR_2)
             
-            print(f"MPR121 sensors initialized at 0x{MPR121_ADDR_1:02X} and 0x{MPR121_ADDR_2:02X}")
+            # Initialize MPR121 sensor 2 independently
+            try:
+                self.mpr121_2 = adafruit_mpr121.MPR121(i2c_bus, address=MPR121_ADDR_2)
+                print(f"MPR121 sensor 2 initialized at 0x{MPR121_ADDR_2:02X}")
+                
+                # Set up IRQ for sensor 2 if available
+                if self.use_irq:
+                    self.irq_button_2 = GPIOZeroButton(
+                        MPR121_IRQ_PIN_2,
+                        pull_up=True,
+                        bounce_time=0.01
+                    )
+                    self.irq_button_2.when_pressed = self._on_irq_triggered_2
+                    print(f"MPR121 IRQ mode enabled for sensor 2: GPIO {MPR121_IRQ_PIN_2}")
+            except Exception as e:
+                print(f"Warning: MPR121 sensor 2 (0x{MPR121_ADDR_2:02X}) not available: {e}")
+                self.mpr121_2 = None
             
-            # Set up separate IRQ pins using gpiozero if using interrupt mode
-            if self.use_irq:
-                # MPR121 IRQ is active LOW, so we use pull_up=True (default)
-                # Create button for sensor 1
-                self.irq_button_1 = GPIOZeroButton(
-                    MPR121_IRQ_PIN_1,
-                    pull_up=True,
-                    bounce_time=0.01
-                )
-                self.irq_button_1.when_pressed = self._on_irq_triggered_1
-                
-                # Create button for sensor 2
-                self.irq_button_2 = GPIOZeroButton(
-                    MPR121_IRQ_PIN_2,
-                    pull_up=True,
-                    bounce_time=0.01
-                )
-                self.irq_button_2.when_pressed = self._on_irq_triggered_2
-                
-                print(f"MPR121 IRQ mode enabled: GPIO {MPR121_IRQ_PIN_1} (sensor 1), GPIO {MPR121_IRQ_PIN_2} (sensor 2)")
+            # Check if at least one sensor was initialized
+            if self.mpr121_1 is None and self.mpr121_2 is None:
+                print("Error: No MPR121 sensors available")
             
         except Exception as e:
-            print(f"Error initializing MPR121: {e}")
+            print(f"Error initializing MPR121 I2C bus: {e}")
             self.mpr121_1 = None
             self.mpr121_2 = None
     
