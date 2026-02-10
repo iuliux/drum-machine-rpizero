@@ -586,9 +586,9 @@ class TouchHandler:
                 
                 # Lock baseline to prevent multi-touch stuck states (from https://crimier.github.io/posts/mpr121_funk/)
                 time.sleep(0.2)  # Let baseline establish
-                self.mpr121_1._i2c.writeto_then_readfrom(MPR121_ADDR_1, bytes([0x5E, 0x00]))  # Disable sensor
+                i2c_bus.writeto(MPR121_ADDR_1, bytes([0x5E, 0x00]))  # Disable sensor
                 time.sleep(0.1)
-                self.mpr121_1._i2c.writeto_then_readfrom(MPR121_ADDR_1, bytes([0x5E, 0b01001111]))  # Enable with baseline tracking disabled
+                i2c_bus.writeto(MPR121_ADDR_1, bytes([0x5E, 0b01001111]))  # Enable with baseline tracking disabled
                 time.sleep(0.1)
                 print("Sensor 1 baseline locked")
                 
@@ -614,9 +614,9 @@ class TouchHandler:
                 
                 # Lock baseline to prevent multi-touch stuck states (from https://crimier.github.io/posts/mpr121_funk/)
                 time.sleep(0.2)  # Let baseline establish
-                self.mpr121_2._i2c.writeto_then_readfrom(MPR121_ADDR_2, bytes([0x5E, 0x00]))  # Disable sensor
+                i2c_bus.writeto(MPR121_ADDR_2, bytes([0x5E, 0x00]))  # Disable sensor
                 time.sleep(0.1)
-                self.mpr121_2._i2c.writeto_then_readfrom(MPR121_ADDR_2, bytes([0x5E, 0b01001111]))  # Enable with baseline tracking disabled
+                i2c_bus.writeto(MPR121_ADDR_2, bytes([0x5E, 0b01001111]))  # Enable with baseline tracking disabled
                 time.sleep(0.1)
                 print("Sensor 2 baseline locked")
                 
