@@ -385,7 +385,7 @@ class LEDHandler:
                         self.pixels[pixel_idx] = COLORS['current']
                     elif is_current:
                         # Current step but inactive: dim white
-                        self.pixels[pixel_idx] = (50, 50, 50)
+                        self.pixels[pixel_idx] = tuple(min(255, c + 100) for c in COLORS['current'])
                     elif is_active:
                         # Active step: instrument color at medium brightness
                         self.pixels[pixel_idx] = base_color
