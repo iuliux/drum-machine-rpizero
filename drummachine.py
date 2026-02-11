@@ -1014,19 +1014,32 @@ def main():
     print("- LEDs: Red=Kick, Green=Snare, Blue=Hihat, White=Current step")
     print("Press Ctrl+C to stop.\n")
     
-    # Main loop - update LEDs and OLED
+    # LED update thread (separate from main loop to avoid blocking touch/audio)
+    led_stop_event = threading.Event()
+    
+    def led_update_thread():
+        """Update LEDs in separate thread (non-blocking)"""
+        while not led_stop_event.is_set():
+            leds.update()
+            step_indicator.update()
+            time.sleep(0.01)  # 100 FPS for LEDs
+    
+    led_thread = threading.Thread(target=led_update_thread, daemon=True)
+    led_thread.start()
+    
+    # Main loop - touch polling and OLED updates only (audio thread handles sequencing)
     try:
         while True:
-            leds.update()
-            step_indicator.update()  # Only updates when step changes
-            oled.update()
-            touch.poll()  # Poll touch sensors continuously
-            time.sleep(0.01)  # 100 FPS for smooth LEDs
+            oled.update()  # OLED less critical, can take a few ms
+            touch.poll()  # Touch input is responsive
+            time.sleep(0.01)  # Keep main loop responsive
     except KeyboardInterrupt:
         print("\nStopping...")
     except Exception as e:
         print(f"\nError in main loop: {e}")
     finally:
+        led_stop_event.set()
+        led_thread.join(timeout=1.0)
         seq.stop()
         encoder.cleanup()
         touch.cleanup()
