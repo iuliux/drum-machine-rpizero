@@ -57,7 +57,7 @@ except (ImportError, RuntimeError) as e:
 
 # Audio configuration
 SAMPLE_RATE = 44100
-BLOCK_SIZE = 1024  # Buffer size for low latency
+BLOCK_SIZE = 2048  # Buffer size for low latency
 
 # Sequencer configuration
 NUM_STEPS = 8
