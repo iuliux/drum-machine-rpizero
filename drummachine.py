@@ -806,11 +806,45 @@ class Sequencer:
         self.stream = None
     
     def _init_reverb_filters(self):
-        """Initialize simple delay line reverb"""
-        # Single delay line at 0.3 seconds (13230 samples @ 44.1kHz)
-        self.reverb_delay = int(SAMPLE_RATE * 0.3)
-        self.reverb_buffer = np.zeros(self.reverb_delay, dtype=np.float32)
-        self.reverb_pos = 0
+        """Load impulse response for convolution reverb"""
+        ir_path = Path(__file__).parent / "ir" / "reverbir.wav"
+        
+        self.ir_data = None
+        self.ir_buffer = np.zeros(BLOCK_SIZE * 2)  # Overlap-add buffer
+        self.ir_position = 0
+        
+        if ir_path.exists():
+            try:
+                ir, sr = sf.read(str(ir_path), dtype='float32')
+                
+                # Resample if needed
+                if sr != SAMPLE_RATE:
+                    ratio = SAMPLE_RATE / sr
+                    new_len = int(len(ir) * ratio)
+                    ir = np.interp(
+                        np.linspace(0, len(ir), new_len),
+                        np.arange(len(ir)),
+                        ir if ir.ndim == 1 else ir[:, 0]
+                    )
+                
+                # Convert to mono if needed
+                if ir.ndim > 1:
+                    ir = np.mean(ir, axis=1)
+                
+                # Normalize
+                ir = ir / (np.max(np.abs(ir)) + 1e-6)
+                
+                # Truncate to reasonable length (max 2 seconds)
+                max_len = int(SAMPLE_RATE * 2)
+                self.ir_data = ir[:max_len].astype(np.float32)
+                
+                print(f"Loaded impulse response: {len(self.ir_data)} samples ({len(self.ir_data)/SAMPLE_RATE:.2f}s)")
+                
+            except Exception as e:
+                print(f"Error loading IR: {e}")
+                self.ir_data = None
+        else:
+            print(f"IR file not found: {ir_path}")
         
     def load_samples(self):
         """Load drum samples from audio folder structure"""
@@ -930,30 +964,24 @@ class Sequencer:
                 self.active_voices.pop(i)
             
             # Apply reverb if enabled (simple single-delay reverb for Pi Zero)
-            if self.reverb > 0.001:
+            if self.reverb > 0.001 and self.ir_data is not None:
                 # Mix channels to mono for reverb processing
                 mono_signal = (outdata[:frames, 0] + outdata[:frames, 1]) * 0.5
                 
-                # Vectorized delay line processing
-                delay_len = len(self.reverb_buffer)
-                indices = np.arange(self.reverb_pos, self.reverb_pos + frames) % delay_len
+                # Convolve with impulse response using FFT for efficiency
+                # Only convolve up to current frame size for low latency
+                wet_signal = signal.fftconvolve(mono_signal, self.ir_data[:min(len(mono_signal)*2, len(self.ir_data))], mode='same')
                 
-                # Read delayed samples
-                delayed = self.reverb_buffer[indices]
+                # Normalize to prevent clipping
+                wet_signal = wet_signal / (np.max(np.abs(wet_signal)) + 1e-6) if np.max(np.abs(wet_signal)) > 0 else wet_signal
                 
-                # Feedback: write back (dry + delayed with decay)
-                self.reverb_buffer[indices] = mono_signal + delayed * 0.45
-                
-                # Mix dry with delayed reverb
-                mix_amt = self.reverb * 0.25  # 0-25% wet
-                reverb_out = mono_signal * (1.0 - mix_amt) + delayed * mix_amt
+                # Mix dry and wet based on reverb knob
+                mix_amt = self.reverb * 0.5  # 0-50% wet
+                reverb_out = mono_signal * (1.0 - mix_amt) + wet_signal * mix_amt
                 
                 # Apply to both channels
                 outdata[:frames, 0] = reverb_out * 0.9
                 outdata[:frames, 1] = reverb_out * 0.9
-                
-                # Advance position
-                self.reverb_pos = (self.reverb_pos + frames) % delay_len
             
             # Apply Master Volume (vectorized)
             outdata[:] *= self.volume
