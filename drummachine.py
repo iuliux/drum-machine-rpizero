@@ -916,7 +916,7 @@ class Sequencer:
                 drive = 1.0 + self.distortion * 9.0  # 1x to 10x drive
                 driven = outdata[:, 0] * drive
                 # Soft clipping via tanh
-                outdata[:, 0] = np.tanh(driven)
+                outdata[:, 0] = np.tanh(driven / (self.volume + 1e-6)) * self.volume
             
             # Apply Master Volume
             outdata[:] *= self.volume
