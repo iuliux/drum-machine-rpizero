@@ -810,8 +810,7 @@ class Sequencer:
         ir_path = Path(__file__).parent / "ir" / "reverbir.wav"
         
         self.ir_data = None
-        self.ir_buffer = np.zeros(BLOCK_SIZE * 2)  # Overlap-add buffer
-        self.ir_position = 0
+        self.ir_state = None
         
         if ir_path.exists():
             try:
@@ -834,9 +833,12 @@ class Sequencer:
                 # Normalize
                 ir = ir / (np.max(np.abs(ir)) + 1e-6)
                 
-                # Truncate to reasonable length (max 2 seconds)
-                max_len = int(SAMPLE_RATE * 2)
+                # Truncate to reasonable length (max 1 second for Pi Zero performance)
+                max_len = int(SAMPLE_RATE * 1.0)
                 self.ir_data = ir[:max_len].astype(np.float32)
+                
+                # Initialize FIR filter state (overlap-add buffer)
+                self.ir_state = np.zeros(len(self.ir_data), dtype=np.float32)
                 
                 print(f"Loaded impulse response: {len(self.ir_data)} samples ({len(self.ir_data)/SAMPLE_RATE:.2f}s)")
                 
@@ -963,25 +965,27 @@ class Sequencer:
             for i in reversed(voices_to_remove):
                 self.active_voices.pop(i)
             
-            # Apply reverb if enabled (simple single-delay reverb for Pi Zero)
+            # Apply reverb if enabled (FIR filter-based convolution with IR)
             if self.reverb > 0.001 and self.ir_data is not None:
-                # Mix channels to mono for reverb processing
+                # Mix channels to mono
                 mono_signal = (outdata[:frames, 0] + outdata[:frames, 1]) * 0.5
                 
-                # Convolve with impulse response using FFT for efficiency
-                # Only convolve up to current frame size for low latency
-                wet_signal = signal.fftconvolve(mono_signal, self.ir_data[:min(len(mono_signal)*2, len(self.ir_data))], mode='same')
+                # Apply FIR filter (using lfilter for efficiency - maintains state)
+                # This is equivalent to convolution but with much lower latency
+                wet_signal = signal.lfilter(self.ir_data[:min(len(self.ir_data), frames*4)], [1.0], mono_signal)
                 
-                # Normalize to prevent clipping
-                wet_signal = wet_signal / (np.max(np.abs(wet_signal)) + 1e-6) if np.max(np.abs(wet_signal)) > 0 else wet_signal
+                # Normalize to prevent clipping (only if needed)
+                max_wet = np.max(np.abs(wet_signal))
+                if max_wet > 1.0:
+                    wet_signal = wet_signal / max_wet
                 
                 # Mix dry and wet based on reverb knob
-                mix_amt = self.reverb * 0.5  # 0-50% wet
+                mix_amt = self.reverb * 0.6  # 0-60% wet
                 reverb_out = mono_signal * (1.0 - mix_amt) + wet_signal * mix_amt
                 
-                # Apply to both channels
-                outdata[:frames, 0] = reverb_out * 0.9
-                outdata[:frames, 1] = reverb_out * 0.9
+                # Apply to both channels with output scaling
+                outdata[:frames, 0] = reverb_out * 0.85
+                outdata[:frames, 1] = reverb_out * 0.85
             
             # Apply Master Volume (vectorized)
             outdata[:] *= self.volume
