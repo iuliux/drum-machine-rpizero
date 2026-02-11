@@ -215,8 +215,9 @@ class RotaryEncoder:
                 new_vol = round(self.sequencer.volume + (direction * 0.05), 2)
                 self.sequencer.set_volume(new_vol)
             elif self.sequencer.mode == 'FX':
-                # Placeholder for future FX param
-                print("FX parameter change (Not implemented)")
+                # Change reverb by 5%
+                new_reverb = round(self.sequencer.reverb + (direction * 0.05), 2)
+                self.sequencer.set_reverb(new_reverb)
         except Exception as e:
             print(f"Error handling rotation: {e}")
     
@@ -384,7 +385,7 @@ class LEDHandler:
                         # Current step that's active: full brightness white
                         self.pixels[pixel_idx] = COLORS['current']
                     elif is_current:
-                        # Current step but inactive: dim white
+                        # Current step but inactive: dim white + hint of instrument color
                         self.pixels[pixel_idx] = tuple(min(255, c + 100) for c in COLORS['current'])
                     elif is_active:
                         # Active step: instrument color at medium brightness
@@ -412,6 +413,7 @@ class OLEDHandler:
         self.last_bpm = -1
         self.last_mode = ""
         self.last_vol = -1
+        self.last_reverb = -1
         
         # Pre-allocate image buffers (Optimization)
         self.image = Image.new('1', (OLED_WIDTH, OLED_HEIGHT))
@@ -509,7 +511,8 @@ class OLEDHandler:
         # Update logic: Redraw if mode, bpm, or volume changes, OR every 20th frame (heartbeat)
         state_changed = (self.sequencer.bpm != self.last_bpm or 
                          self.sequencer.mode != self.last_mode or
-                         self.sequencer.volume != self.last_vol)
+                         self.sequencer.volume != self.last_vol or
+                         self.sequencer.reverb != self.last_reverb)
         
         self.update_counter += 1
         if not state_changed and self.update_counter < 20:
@@ -519,6 +522,7 @@ class OLEDHandler:
         self.last_bpm = self.sequencer.bpm
         self.last_mode = self.sequencer.mode
         self.last_vol = self.sequencer.volume
+        self.last_reverb = self.sequencer.reverb
         
         try:
             # Clear existing image buffer
@@ -544,7 +548,12 @@ class OLEDHandler:
 
             elif self.sequencer.mode == 'FX':
                 self.image.paste(self.icon_fx, (10, 6))
-                self.draw.text((62, 10), "N/A", font=self.font_large, fill=255)
+                reverb_percent = int(self.sequencer.reverb * 100)
+                self.draw.text((62, 10), f"{reverb_percent}%", font=self.font_large, fill=255)
+                # Draw Reverb Bar
+                self.draw.rectangle((62, 40, 120, 44), outline=1)
+                fill_width = int(58 * self.sequencer.reverb)
+                self.draw.rectangle((62, 40, 62 + fill_width, 44), fill=1)
 
             self.device.display(self.image)
             
@@ -772,6 +781,7 @@ class Sequencer:
     def __init__(self, bpm=120):
         self.bpm = bpm
         self.volume = 0.1  # Default volume 10%
+        self.reverb = 0.0  # Reverb mix 0-1 (0=no reverb, 1=full reverb)
         self.modes = ['BPM', 'VOL', 'FX']
         self.mode_idx = 0
         self.mode = self.modes[self.mode_idx]
@@ -781,6 +791,8 @@ class Sequencer:
         self.is_playing = False
         self.sample_banks = {}  # Dictionary of lists of samples per instrument
         self.active_voices = []  # List of currently playing samples
+        self.reverb_buffer = np.zeros(int(SAMPLE_RATE * 2), dtype=np.float32)  # 2-second reverb buffer
+        self.reverb_buffer_pos = 0
         self.lock = threading.Lock()
         
         # Load samples
@@ -850,6 +862,10 @@ class Sequencer:
     def set_volume(self, vol):
         self.volume = max(0.0, min(1.0, vol))
     
+    def set_reverb(self, reverb):
+        """Set reverb mix level (0.0 to 1.0)"""
+        self.reverb = max(0.0, min(1.0, reverb))
+    
     def cycle_mode(self):
         self.mode_idx = (self.mode_idx + 1) % len(self.modes)
         self.mode = self.modes[self.mode_idx]
@@ -870,7 +886,7 @@ class Sequencer:
                     })
     
     def audio_callback(self, outdata, frames, time_info, status):
-        """Audio callback - mixes all active voices"""
+        """Audio callback - mixes all active voices with reverb"""
         if status:
             print(f"Audio status: {status}")
         
@@ -901,6 +917,28 @@ class Sequencer:
             # Remove finished voices (in reverse to maintain indices)
             for i in reversed(voices_to_remove):
                 self.active_voices.pop(i)
+            
+            # Apply reverb if enabled (simple feedback delay line)
+            if self.reverb > 0.001:  # Only process if reverb > 0
+                reverb_buffer_len = len(self.reverb_buffer)
+                
+                for ch in range(2):  # Process both channels
+                    for sample_idx in range(frames):
+                        # Read delayed sample from reverb buffer
+                        delayed = self.reverb_buffer[self.reverb_buffer_pos]
+                        
+                        # Mix: dry signal + reverb tail
+                        dry = outdata[sample_idx, ch]
+                        reverb_out = dry + (delayed * self.reverb * 0.6)  # Reverb tail with feedback
+                        
+                        # Write to reverb buffer (feedback decay)
+                        self.reverb_buffer[self.reverb_buffer_pos] = dry + (delayed * 0.5)
+                        
+                        # Update output with reverb mix
+                        outdata[sample_idx, ch] = reverb_out * 0.8  # Prevent clipping
+                    
+                    # Advance reverb buffer position
+                    self.reverb_buffer_pos = (self.reverb_buffer_pos + frames) % reverb_buffer_len
             
             # Apply Master Volume
             outdata[:] *= self.volume
