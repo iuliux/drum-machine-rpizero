@@ -291,13 +291,14 @@ class StepIndicatorHandler:
         if self.pixels is None:
             return
         
-        current_step = self.sequencer.current_step
+        # Display the step that was just triggered (current_step has already advanced)
+        display_step = (self.sequencer.current_step - 1) % NUM_STEPS
         
         # Only update if step changed
-        if current_step == self.last_step:
+        if display_step == self.last_step:
             return
         
-        self.last_step = current_step
+        self.last_step = display_step
         
         try:
             # Clear all LEDs
@@ -305,7 +306,7 @@ class StepIndicatorHandler:
             
             # Light up current step (every other LED: 0, 2, 4, 6, 8, 10, 12, 14)
             if self.sequencer.is_playing:
-                led_index = current_step * 2  # Map step 0-7 to LED 0,2,4,6,8,10,12,14
+                led_index = display_step * 2  # Map step 0-7 to LED 0,2,4,6,8,10,12,14
                 self.pixels[led_index] = (255, 255, 255)  # White
             
             self.pixels.show()
@@ -366,7 +367,8 @@ class LEDHandler:
             return
         
         try:
-            current_step = self.sequencer.current_step
+            # Display the step that was just triggered (current_step has already advanced)
+            display_step = (self.sequencer.current_step - 1) % NUM_STEPS
             
             for inst_idx, instrument_name in enumerate(INSTRUMENT_NAMES):
                 base_color = COLORS[instrument_name]
@@ -378,7 +380,7 @@ class LEDHandler:
                     is_active = self.sequencer.pattern[inst_idx, step_idx]
                     
                     # Check if this is the current playing step
-                    is_current = (step_idx == current_step) and self.sequencer.is_playing
+                    is_current = (step_idx == display_step) and self.sequencer.is_playing
                     
                     if is_current and is_active:
                         # Current step that's active: full brightness white
