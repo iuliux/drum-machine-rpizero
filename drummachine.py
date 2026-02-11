@@ -447,10 +447,10 @@ class OLEDHandler:
 
         # Load FX Icon (Gear) from file (34x34)
         try:
-            icon_path = Path(__file__).parent / "icons" / "gear.bmp"
+            icon_path = Path(__file__).parent / "icons" / "distortion.bmp"
             self.icon_fx = Image.open(icon_path).convert('1')
         except Exception as e:
-            print(f"Warning: Could not load gear.bmp: {e}. Creating fallback.")
+            print(f"Warning: Could not load distortion.bmp: {e}. Creating fallback.")
             self.icon_fx = Image.new('1', (34, 34), 0)
         
         
