@@ -1006,8 +1006,8 @@ def main():
     seq.toggle_step(1, 2)
     seq.toggle_step(1, 6)
     # Hi-hat on all steps
-    for i in range(8):
-        seq.toggle_step(2, i)
+    # for i in range(8):
+    #     seq.toggle_step(2, i)
     
     # Start playback
     seq.start()
