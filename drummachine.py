@@ -528,6 +528,9 @@ class OLEDHandler:
         try:
             # Clear existing image buffer
             self.draw.rectangle((0, 0, OLED_WIDTH, OLED_HEIGHT), fill=0)
+
+            # Define constants for layout
+            value_xoffset = 52
             
             # Common Elements
             status_text = "Running" if self.sequencer.is_playing else "Stopped"
@@ -536,25 +539,25 @@ class OLEDHandler:
             # Mode Specifics
             if self.sequencer.mode == 'BPM':
                 self.image.paste(self.icon_metro, (10, 6))
-                self.draw.text((62, 10), str(self.sequencer.bpm), font=self.font_large, fill=255)
+                self.draw.text((value_xoffset, 10), str(self.sequencer.bpm), font=self.font_large, fill=255)
             
             elif self.sequencer.mode == 'VOL':
                 self.image.paste(self.icon_vol, (10, 6))
                 vol_percent = int(self.sequencer.volume * 100)
-                self.draw.text((62, 10), f"{vol_percent}%", font=self.font_large, fill=255)
+                self.draw.text((value_xoffset, 10), f"{vol_percent}%", font=self.font_large, fill=255)
                 # Draw Volume Bar
-                self.draw.rectangle((62, 40, 120, 44), outline=1)
+                self.draw.rectangle((value_xoffset, 40, 120, 44), outline=1)
                 fill_width = int(58 * self.sequencer.volume)
-                self.draw.rectangle((62, 40, 62 + fill_width, 44), fill=1)
+                self.draw.rectangle((value_xoffset, 40, value_xoffset + fill_width, 44), fill=1)
 
             elif self.sequencer.mode == 'FX':
                 self.image.paste(self.icon_fx, (10, 6))
                 dist_percent = int(self.sequencer.distortion * 100)
-                self.draw.text((62, 10), f"{dist_percent}%", font=self.font_large, fill=255)
+                self.draw.text((value_xoffset, 10), f"{dist_percent}%", font=self.font_large, fill=255)
                 # Draw Distortion Bar
-                self.draw.rectangle((62, 40, 120, 44), outline=1)
+                self.draw.rectangle((value_xoffset, 40, 120, 44), outline=1)
                 fill_width = int(58 * self.sequencer.distortion)
-                self.draw.rectangle((62, 40, 62 + fill_width, 44), fill=1)
+                self.draw.rectangle((value_xoffset, 40, value_xoffset + fill_width, 44), fill=1)
 
             self.device.display(self.image)
             
