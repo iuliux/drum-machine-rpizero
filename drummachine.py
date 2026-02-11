@@ -12,6 +12,7 @@ import time
 import threading
 import random
 from pathlib import Path
+from scipy import signal
 
 # --- GPIO/Hardware Setup for Systemd Service ---
 # Set gpiozero factory before any GPIO imports if running as systemd service
@@ -806,7 +807,7 @@ class Sequencer:
     
     def _init_reverb_filters(self):
         """Initialize comb and allpass filter state for reverb"""
-        # Comb filter delays (in samples at 44.1kHz)
+        # Comb filter delays (in samples at 44.1kHz) - Freeverb design
         self.comb_delays = [1116, 1188, 1277, 1356]
         self.comb_buffers = [np.zeros(d) for d in self.comb_delays]
         self.comb_indices = [0] * len(self.comb_delays)
@@ -820,6 +821,43 @@ class Sequencer:
         self.allpass_indices = [0] * len(self.allpass_delays)
         self.allpass_filter_store = [0.0] * len(self.allpass_delays)
         self.allpass_feedback = 0.5
+    
+    def _comb_filter(self, input_signal, delay, gain, damp1, damp2, state):
+        """Fast comb filter using circular buffer (in-place state update)"""
+        output = np.zeros_like(input_signal)
+        buffer, index, filter_store = state
+        
+        for i in range(len(input_signal)):
+            # Read from buffer
+            buf_out = buffer[index]
+            
+            # Damping filter (low-pass): y = y*damp1 + x*damp2
+            filter_store = buf_out * damp2 + filter_store * damp1
+            
+            # Feedback loop
+            buffer[index] = input_signal[i] + filter_store * gain
+            
+            output[i] = buf_out
+            index = (index + 1) % delay
+        
+        return output, (buffer, index, filter_store)
+    
+    def _allpass_filter(self, input_signal, delay, feedback, state):
+        """Fast allpass filter using circular buffer (in-place state update)"""
+        output = np.zeros_like(input_signal)
+        buffer, index, filter_store = state
+        
+        for i in range(len(input_signal)):
+            buf_out = buffer[index]
+            
+            # Allpass: y[n] = -x[n] + a*(x[n] + y[n-d])
+            # But implementation: y[n] = x[n]*a + (1-a)*y[n-d]
+            output[i] = input_signal[i] * (1.0 - feedback) + buf_out * feedback
+            
+            buffer[index] = input_signal[i] + buf_out * feedback
+            index = (index + 1) % delay
+        
+        return output, (buffer, index, filter_store)
         
     def load_samples(self):
         """Load drum samples from audio folder structure"""
@@ -943,58 +981,25 @@ class Sequencer:
                 dry_signal = (outdata[:frames, 0] + outdata[:frames, 1]) * 0.5  # Mix to mono
                 wet_signal = np.zeros(frames)
                 
-                # Process through parallel comb filters
+                # Process through parallel comb filters (vectorized)
                 for ch in range(len(self.comb_buffers)):
-                    comb_out = np.zeros(frames)
-                    
-                    for s in range(frames):
-                        # Read from comb buffer
-                        idx = self.comb_indices[ch]
-                        buf_out = self.comb_buffers[ch][idx]
-                        
-                        # Apply damping filter (low-pass)
-                        self.comb_filter_store[ch] = (buf_out * self.comb_damp2) + \
-                                                     (self.comb_filter_store[ch] * self.comb_damp1)
-                        
-                        # Feedback: input + damped buffer output
-                        feedback = dry_signal[s] + (self.comb_filter_store[ch] * 0.84)
-                        
-                        # Write back to buffer
-                        self.comb_buffers[ch][idx] = feedback
-                        
-                        # Output
-                        comb_out[s] = buf_out
-                        
-                        # Advance buffer index
-                        self.comb_indices[ch] = (idx + 1) % self.comb_delays[ch]
-                    
+                    comb_out, (self.comb_buffers[ch], self.comb_indices[ch], self.comb_filter_store[ch]) = \
+                        self._comb_filter(dry_signal, self.comb_delays[ch], 0.84, 
+                                         self.comb_damp1, self.comb_damp2,
+                                         (self.comb_buffers[ch], self.comb_indices[ch], self.comb_filter_store[ch]))
                     wet_signal += comb_out
                 
                 # Process through series allpass filters for diffusion
                 allpass_in = wet_signal
                 for ch in range(len(self.allpass_buffers)):
-                    allpass_out = np.zeros(frames)
-                    
-                    for s in range(frames):
-                        idx = self.allpass_indices[ch]
-                        buf_out = self.allpass_buffers[ch][idx]
-                        
-                        # Allpass: y = -x + a*(x + y[n-d])
-                        allpass_in_sample = allpass_in[s]
-                        feedback = (buf_out * -self.allpass_feedback) + \
-                                   (allpass_in_sample * (1 - self.allpass_feedback))
-                        output = (buf_out * self.allpass_feedback) + allpass_in_sample
-                        
-                        self.allpass_buffers[ch][idx] = feedback
-                        allpass_out[s] = output
-                        
-                        self.allpass_indices[ch] = (idx + 1) % self.allpass_delays[ch]
-                    
+                    allpass_out, (self.allpass_buffers[ch], self.allpass_indices[ch], self.allpass_filter_store[ch]) = \
+                        self._allpass_filter(allpass_in, self.allpass_delays[ch], self.allpass_feedback,
+                                            (self.allpass_buffers[ch], self.allpass_indices[ch], self.allpass_filter_store[ch]))
                     allpass_in = allpass_out
                 
                 # Mix dry and wet signals
-                mix_level = self.reverb * 0.35  # Scale reverb knob to 0-35% wet
-                final_out = (dry_signal * (1.0 - mix_level) + allpass_in * mix_level) * 0.8
+                mix_level = self.reverb * 0.4  # Scale reverb knob to 0-40% wet
+                final_out = (dry_signal * (1.0 - mix_level) + allpass_in * mix_level) * 0.95
                 
                 # Apply to both channels
                 outdata[:frames, 0] = final_out
