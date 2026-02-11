@@ -57,7 +57,7 @@ except (ImportError, RuntimeError) as e:
 
 # Audio configuration
 SAMPLE_RATE = 44100
-BLOCK_SIZE = 2048  # Buffer size for low latency
+BLOCK_SIZE = 512  # Smaller buffer = lower latency (less lag before snare hits)
 
 # Sequencer configuration
 NUM_STEPS = 8
@@ -909,9 +909,6 @@ class Sequencer:
         next_step_time = time.perf_counter()
         step_duration = 60.0 / self.bpm / 2  # 8th notes
         
-        # Audio latency compensation (in seconds)
-        audio_latency = BLOCK_SIZE / SAMPLE_RATE
-        
         while self.is_playing:
             # Trigger samples for current step
             self.trigger_samples(self.current_step)
@@ -922,8 +919,8 @@ class Sequencer:
             # Calculate next step time
             next_step_time += step_duration
             
-            # Sleep until next step minus audio latency (so LEDs sync with sound)
-            sleep_time = next_step_time - time.perf_counter() - audio_latency
+            # Sleep until next step (minimal latency compensation)
+            sleep_time = next_step_time - time.perf_counter()
             if sleep_time > 0:
                 time.sleep(sleep_time)
             else:
