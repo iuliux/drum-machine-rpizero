@@ -929,17 +929,21 @@ class Sequencer:
                 delayed_samples = self.reverb_buffer[indices]
                 
                 # Reverb processing (vectorized for both channels):
-                # Output = Dry + (Delayed * reverb_mix * feedback)
+                # Create a stronger reverb tail with multiple delayed copies
                 dry_signal = (outdata[:frames, 0] + outdata[:frames, 1]) * 0.5  # Mix to mono
-                reverb_tail = delayed_samples * self.reverb * 0.7  # Reverb contribution
-                reverb_out = dry_signal + reverb_tail
+                reverb_tail = delayed_samples * self.reverb * 1.2  # Strong reverb contribution
                 
-                # Update reverb buffer with feedback decay (vectorized)
-                self.reverb_buffer[indices] = (dry_signal + delayed_samples * 0.45) * 0.95
+                # Combine dry and reverb (larger reverb presence)
+                reverb_mix_level = self.reverb * 0.5  # 0-50% reverb blend based on reverb knob
+                reverb_out = dry_signal * (1.0 - reverb_mix_level) + reverb_tail * reverb_mix_level
                 
-                # Mix reverb back into output (both channels)
-                outdata[:frames, 0] = (outdata[:frames, 0] * 0.85 + reverb_out * 0.15)
-                outdata[:frames, 1] = (outdata[:frames, 1] * 0.85 + reverb_out * 0.15)
+                # Update reverb buffer with stronger feedback (sustains longer)
+                self.reverb_buffer[indices] = (dry_signal * 0.3 + delayed_samples * 0.65) * 0.98
+                
+                # Mix reverb back into output (both channels) with stronger presence
+                blend = 0.4  # 40% reverb effect in final mix
+                outdata[:frames, 0] = outdata[:frames, 0] * (1.0 - blend) + reverb_out * blend
+                outdata[:frames, 1] = outdata[:frames, 1] * (1.0 - blend) + reverb_out * blend
                 
                 # Advance reverb buffer position
                 self.reverb_buffer_pos = (self.reverb_buffer_pos + frames) % reverb_buffer_len
