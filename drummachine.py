@@ -215,8 +215,10 @@ class RotaryEncoder:
                 new_vol = round(self.sequencer.volume + (direction * 0.05), 2)
                 self.sequencer.set_volume(new_vol)
             elif self.sequencer.mode == 'FX':
-                # Placeholder for future FX param
-                print("FX parameter change (Not implemented)")
+                # Control distortion amount
+                self.sequencer.distortion = max(0.0, self.sequencer.distortion + change * 0.05)
+                self.sequencer.set_distortion(self.sequencer.distortion)
+                print(f"Distortion: {self.sequencer.distortion:.2f}")
         except Exception as e:
             print(f"Error handling rotation: {e}")
     
@@ -414,6 +416,7 @@ class OLEDHandler:
         self.last_bpm = -1
         self.last_mode = ""
         self.last_vol = -1
+        self.last_dist = -1
         
         # Pre-allocate image buffers (Optimization)
         self.image = Image.new('1', (OLED_WIDTH, OLED_HEIGHT))
@@ -500,10 +503,11 @@ class OLEDHandler:
         if self.device is None:
             return
         
-        # Update logic: Redraw if mode, bpm, or volume changes, OR every 20th frame (heartbeat)
+        # Update logic: Redraw if mode, bpm, volume, or distortion changes, OR every 20th frame (heartbeat)
         state_changed = (self.sequencer.bpm != self.last_bpm or 
                          self.sequencer.mode != self.last_mode or
-                         self.sequencer.volume != self.last_vol)
+                         self.sequencer.volume != self.last_vol or
+                         self.sequencer.distortion != self.last_dist)
         
         self.update_counter += 1
         if not state_changed and self.update_counter < 20:
@@ -513,6 +517,7 @@ class OLEDHandler:
         self.last_bpm = self.sequencer.bpm
         self.last_mode = self.sequencer.mode
         self.last_vol = self.sequencer.volume
+        self.last_dist = self.sequencer.distortion
         
         try:
             # Clear existing image buffer
@@ -538,7 +543,12 @@ class OLEDHandler:
 
             elif self.sequencer.mode == 'FX':
                 self.image.paste(self.icon_fx, (10, 6))
-                self.draw.text((62, 10), "N/A", font=self.font_large, fill=255)
+                dist_percent = int(self.sequencer.distortion * 100)
+                self.draw.text((62, 10), f"{dist_percent}%", font=self.font_large, fill=255)
+                # Draw Distortion Bar
+                self.draw.rectangle((62, 40, 120, 44), outline=1)
+                fill_width = int(58 * self.sequencer.distortion)
+                self.draw.rectangle((62, 40, 62 + fill_width, 44), fill=1)
 
             self.device.display(self.image)
             
@@ -766,6 +776,7 @@ class Sequencer:
     def __init__(self, bpm=120):
         self.bpm = bpm
         self.volume = 0.1  # Default volume 10%
+        self.distortion = 0.0  # Distortion amount 0.0-1.0
         self.modes = ['BPM', 'VOL', 'FX']
         self.mode_idx = 0
         self.mode = self.modes[self.mode_idx]
@@ -844,6 +855,10 @@ class Sequencer:
     def set_volume(self, vol):
         self.volume = max(0.0, min(1.0, vol))
     
+    def set_distortion(self, amount):
+        """Set distortion amount (0.0 = none, 1.0 = heavy)"""
+        self.distortion = max(0.0, min(1.0, amount))
+    
     def cycle_mode(self):
         self.mode_idx = (self.mode_idx + 1) % len(self.modes)
         self.mode = self.modes[self.mode_idx]
@@ -894,6 +909,14 @@ class Sequencer:
             # Remove finished voices (in reverse to maintain indices)
             for i in reversed(voices_to_remove):
                 self.active_voices.pop(i)
+            
+            # Apply Distortion if enabled
+            if self.distortion > 0.0:
+                # Drive signal by distortion amount
+                drive = 1.0 + self.distortion * 9.0  # 1x to 10x drive
+                driven = outdata[:, 0] * drive
+                # Soft clipping via tanh
+                outdata[:, 0] = np.tanh(driven)
             
             # Apply Master Volume
             outdata[:] *= self.volume
