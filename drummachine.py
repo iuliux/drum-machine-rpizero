@@ -216,7 +216,7 @@ class RotaryEncoder:
                 self.sequencer.set_volume(new_vol)
             elif self.sequencer.mode == 'FX':
                 # Control distortion amount
-                self.sequencer.distortion = max(0.0, self.sequencer.distortion + change * 0.05)
+                self.sequencer.distortion = max(0.0, self.sequencer.distortion + direction * 0.05)
                 self.sequencer.set_distortion(self.sequencer.distortion)
                 print(f"Distortion: {self.sequencer.distortion:.2f}")
         except Exception as e:
