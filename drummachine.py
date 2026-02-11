@@ -896,7 +896,7 @@ class Sequencer:
         with self.lock:
             voices_to_remove = []
             
-            # Mix all active voices
+            # Mix all active voices (vectorized)
             for i, voice in enumerate(self.active_voices):
                 pos = voice['position']
                 remaining = voice['length'] - pos
@@ -908,7 +908,7 @@ class Sequencer:
                 # How many samples to copy this block
                 to_copy = min(frames, remaining)
                 
-                # Mix into output (mono to stereo)
+                # Mix into output (vectorized numpy operation - mono to stereo)
                 outdata[:to_copy, 0] += voice['data'][pos:pos + to_copy]
                 outdata[:to_copy, 1] += voice['data'][pos:pos + to_copy]
                 
@@ -918,29 +918,33 @@ class Sequencer:
             for i in reversed(voices_to_remove):
                 self.active_voices.pop(i)
             
-            # Apply reverb if enabled (simple feedback delay line)
+            # Apply reverb if enabled (vectorized delay line with feedback)
             if self.reverb > 0.001:  # Only process if reverb > 0
                 reverb_buffer_len = len(self.reverb_buffer)
                 
-                for ch in range(2):  # Process both channels
-                    for sample_idx in range(frames):
-                        # Read delayed sample from reverb buffer
-                        delayed = self.reverb_buffer[self.reverb_buffer_pos]
-                        
-                        # Mix: dry signal + reverb tail
-                        dry = outdata[sample_idx, ch]
-                        reverb_out = dry + (delayed * self.reverb * 0.6)  # Reverb tail with feedback
-                        
-                        # Write to reverb buffer (feedback decay)
-                        self.reverb_buffer[self.reverb_buffer_pos] = dry + (delayed * 0.5)
-                        
-                        # Update output with reverb mix
-                        outdata[sample_idx, ch] = reverb_out * 0.8  # Prevent clipping
-                    
-                    # Advance reverb buffer position
-                    self.reverb_buffer_pos = (self.reverb_buffer_pos + frames) % reverb_buffer_len
+                # Calculate indices for circular buffer access (vectorized)
+                indices = np.arange(self.reverb_buffer_pos, self.reverb_buffer_pos + frames) % reverb_buffer_len
+                
+                # Read delayed samples from both channels
+                delayed_samples = self.reverb_buffer[indices]
+                
+                # Reverb processing (vectorized for both channels):
+                # Output = Dry + (Delayed * reverb_mix * feedback)
+                dry_signal = (outdata[:frames, 0] + outdata[:frames, 1]) * 0.5  # Mix to mono
+                reverb_tail = delayed_samples * self.reverb * 0.7  # Reverb contribution
+                reverb_out = dry_signal + reverb_tail
+                
+                # Update reverb buffer with feedback decay (vectorized)
+                self.reverb_buffer[indices] = (dry_signal + delayed_samples * 0.45) * 0.95
+                
+                # Mix reverb back into output (both channels)
+                outdata[:frames, 0] = (outdata[:frames, 0] * 0.85 + reverb_out * 0.15)
+                outdata[:frames, 1] = (outdata[:frames, 1] * 0.85 + reverb_out * 0.15)
+                
+                # Advance reverb buffer position
+                self.reverb_buffer_pos = (self.reverb_buffer_pos + frames) % reverb_buffer_len
             
-            # Apply Master Volume
+            # Apply Master Volume (vectorized)
             outdata[:] *= self.volume
     
     def sequencer_thread(self):
