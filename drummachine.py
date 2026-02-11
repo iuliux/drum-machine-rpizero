@@ -907,17 +907,32 @@ class Sequencer:
     
     def sequencer_thread(self):
         """Main sequencer loop running in separate thread"""
+        next_step_time = time.perf_counter()
+        step_duration = 60.0 / self.bpm / 2  # 8th notes
+        
+        # Audio latency compensation (in seconds)
+        audio_latency = BLOCK_SIZE / SAMPLE_RATE
+        
         while self.is_playing:
-            step_duration = 60.0 / self.bpm / 2  # 8th notes
-            
             # Trigger samples for current step
             self.trigger_samples(self.current_step)
             
             # Advance step
             self.current_step = (self.current_step + 1) % NUM_STEPS
             
-            # Sleep until next step
-            time.sleep(step_duration)
+            # Calculate next step time
+            next_step_time += step_duration
+            
+            # Sleep until next step minus audio latency (so LEDs sync with sound)
+            sleep_time = next_step_time - time.perf_counter() - audio_latency
+            if sleep_time > 0:
+                time.sleep(sleep_time)
+            else:
+                # We're running late, resync
+                next_step_time = time.perf_counter()
+            
+            # Update step duration if BPM changed
+            step_duration = 60.0 / self.bpm / 2
     
     def start(self):
         """Start playback"""
