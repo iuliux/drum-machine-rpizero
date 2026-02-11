@@ -128,6 +128,12 @@ class DrumSample:
             # Convert stereo to mono if needed
             if data.ndim == 2:
                 data = np.mean(data, axis=1)
+
+            # Apply fade-out at the end to prevent clicks (last 5ms)
+            fade_samples = int(0.005 * SAMPLE_RATE)  # 5ms fade
+            if len(data) > fade_samples:
+                fade_curve = np.linspace(1.0, 0.0, fade_samples)
+                data[-fade_samples:] *= fade_curve
             
             self.data = data.astype(np.float32)
             print(f"Loaded: {self.filepath.name} ({len(self.data)} samples)")
