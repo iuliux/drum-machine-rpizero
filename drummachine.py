@@ -870,7 +870,7 @@ class Sequencer:
                     })
     
     def audio_callback(self, outdata, frames, time_info, status):
-        """Audio callback - mixes all active voices"""
+        """Audio callback - mixes all active voices (mono optimized)"""
         if status:
             print(f"Audio status: {status}")
         
@@ -880,7 +880,7 @@ class Sequencer:
         with self.lock:
             voices_to_remove = []
             
-            # Mix all active voices
+            # Mix all active voices directly into mono output buffer
             for i, voice in enumerate(self.active_voices):
                 pos = voice['position']
                 remaining = voice['length'] - pos
@@ -892,9 +892,8 @@ class Sequencer:
                 # How many samples to copy this block
                 to_copy = min(frames, remaining)
                 
-                # Mix into output (mono to stereo)
+                # Mix into mono output (vectorized)
                 outdata[:to_copy, 0] += voice['data'][pos:pos + to_copy]
-                outdata[:to_copy, 1] += voice['data'][pos:pos + to_copy]
                 
                 voice['position'] += to_copy
             
@@ -942,11 +941,11 @@ class Sequencer:
         self.is_playing = True
         self.current_step = 0
         
-        # Start audio stream
+        # Start audio stream (mono-only for single speaker, more efficient)
         self.stream = sd.OutputStream(
             samplerate=SAMPLE_RATE,
             blocksize=BLOCK_SIZE,
-            channels=2,
+            channels=1,
             dtype=np.float32,
             callback=self.audio_callback
         )
