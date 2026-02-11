@@ -666,6 +666,7 @@ class TouchHandler:
                 for i in range(12):
                     if new_touches & (1 << i):
                         instrument, step = self.map_touch_to_pattern(1, i)
+                        print(f"Sensor 1 - Pad {i} → {INSTRUMENT_NAMES[instrument]} step {step}")
                         self.sequencer.toggle_step(instrument, step)
                 
                 self.last_touched_1 = touched
@@ -677,6 +678,7 @@ class TouchHandler:
                 for i in range(12):
                     if new_touches & (1 << i):
                         instrument, step = self.map_touch_to_pattern(2, i)
+                        print(f"Sensor 2 - Pad {i} → {INSTRUMENT_NAMES[instrument]} step {step}")
                         self.sequencer.toggle_step(instrument, step)
                 
                 self.last_touched_2 = touched
