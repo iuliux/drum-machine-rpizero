@@ -798,8 +798,28 @@ class Sequencer:
         # Load samples
         self.load_samples()
         
+        # Initialize reverb filters
+        self._init_reverb_filters()
+        
         # Audio stream
         self.stream = None
+    
+    def _init_reverb_filters(self):
+        """Initialize comb and allpass filter state for reverb"""
+        # Comb filter delays (in samples at 44.1kHz)
+        self.comb_delays = [1116, 1188, 1277, 1356]
+        self.comb_buffers = [np.zeros(d) for d in self.comb_delays]
+        self.comb_indices = [0] * len(self.comb_delays)
+        self.comb_filter_store = [0.0] * len(self.comb_delays)
+        self.comb_damp1 = 0.4  # Damping factor
+        self.comb_damp2 = 0.6  # (1.0 - damp1)
+        
+        # Allpass filter delays (in samples)
+        self.allpass_delays = [556, 441, 341, 225]
+        self.allpass_buffers = [np.zeros(d) for d in self.allpass_delays]
+        self.allpass_indices = [0] * len(self.allpass_delays)
+        self.allpass_filter_store = [0.0] * len(self.allpass_delays)
+        self.allpass_feedback = 0.5
         
     def load_samples(self):
         """Load drum samples from audio folder structure"""
@@ -920,33 +940,65 @@ class Sequencer:
             
             # Apply reverb if enabled (vectorized delay line with feedback)
             if self.reverb > 0.001:  # Only process if reverb > 0
-                reverb_buffer_len = len(self.reverb_buffer)
-                
-                # Calculate indices for circular buffer access (vectorized)
-                indices = np.arange(self.reverb_buffer_pos, self.reverb_buffer_pos + frames) % reverb_buffer_len
-                
-                # Read delayed samples from both channels
-                delayed_samples = self.reverb_buffer[indices]
-                
-                # Reverb processing (vectorized for both channels):
-                # Create a stronger reverb tail with multiple delayed copies
                 dry_signal = (outdata[:frames, 0] + outdata[:frames, 1]) * 0.5  # Mix to mono
-                reverb_tail = delayed_samples * self.reverb * 1.2  # Strong reverb contribution
+                wet_signal = np.zeros(frames)
                 
-                # Combine dry and reverb (larger reverb presence)
-                reverb_mix_level = self.reverb * 0.5  # 0-50% reverb blend based on reverb knob
-                reverb_out = dry_signal * (1.0 - reverb_mix_level) + reverb_tail * reverb_mix_level
+                # Process through parallel comb filters
+                for ch in range(len(self.comb_buffers)):
+                    comb_out = np.zeros(frames)
+                    
+                    for s in range(frames):
+                        # Read from comb buffer
+                        idx = self.comb_indices[ch]
+                        buf_out = self.comb_buffers[ch][idx]
+                        
+                        # Apply damping filter (low-pass)
+                        self.comb_filter_store[ch] = (buf_out * self.comb_damp2) + \
+                                                     (self.comb_filter_store[ch] * self.comb_damp1)
+                        
+                        # Feedback: input + damped buffer output
+                        feedback = dry_signal[s] + (self.comb_filter_store[ch] * 0.84)
+                        
+                        # Write back to buffer
+                        self.comb_buffers[ch][idx] = feedback
+                        
+                        # Output
+                        comb_out[s] = buf_out
+                        
+                        # Advance buffer index
+                        self.comb_indices[ch] = (idx + 1) % self.comb_delays[ch]
+                    
+                    wet_signal += comb_out
                 
-                # Update reverb buffer with stronger feedback (sustains longer)
-                self.reverb_buffer[indices] = (dry_signal * 0.3 + delayed_samples * 0.65) * 0.98
+                # Process through series allpass filters for diffusion
+                allpass_in = wet_signal
+                for ch in range(len(self.allpass_buffers)):
+                    allpass_out = np.zeros(frames)
+                    
+                    for s in range(frames):
+                        idx = self.allpass_indices[ch]
+                        buf_out = self.allpass_buffers[ch][idx]
+                        
+                        # Allpass: y = -x + a*(x + y[n-d])
+                        allpass_in_sample = allpass_in[s]
+                        feedback = (buf_out * -self.allpass_feedback) + \
+                                   (allpass_in_sample * (1 - self.allpass_feedback))
+                        output = (buf_out * self.allpass_feedback) + allpass_in_sample
+                        
+                        self.allpass_buffers[ch][idx] = feedback
+                        allpass_out[s] = output
+                        
+                        self.allpass_indices[ch] = (idx + 1) % self.allpass_delays[ch]
+                    
+                    allpass_in = allpass_out
                 
-                # Mix reverb back into output (both channels) with stronger presence
-                blend = 0.4  # 40% reverb effect in final mix
-                outdata[:frames, 0] = outdata[:frames, 0] * (1.0 - blend) + reverb_out * blend
-                outdata[:frames, 1] = outdata[:frames, 1] * (1.0 - blend) + reverb_out * blend
+                # Mix dry and wet signals
+                mix_level = self.reverb * 0.35  # Scale reverb knob to 0-35% wet
+                final_out = (dry_signal * (1.0 - mix_level) + allpass_in * mix_level) * 0.8
                 
-                # Advance reverb buffer position
-                self.reverb_buffer_pos = (self.reverb_buffer_pos + frames) % reverb_buffer_len
+                # Apply to both channels
+                outdata[:frames, 0] = final_out
+                outdata[:frames, 1] = final_out
             
             # Apply Master Volume (vectorized)
             outdata[:] *= self.volume
