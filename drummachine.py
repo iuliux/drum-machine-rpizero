@@ -465,12 +465,12 @@ class OLEDHandler:
             print(f"Warning: Could not load distortion.bmp: {e}. Creating fallback.")
             self.icon_fx = Image.new('1', (34, 34), 0)
         
-        # Load Bank/Folder icon from file (34x34)
+        # Load Bank icon from file (34x34)
         try:
-            icon_path = Path(__file__).parent / "icons" / "folder.bmp"
+            icon_path = Path(__file__).parent / "icons" / "banks.bmp"
             self.icon_bank = Image.open(icon_path).convert('1')
         except Exception as e:
-            print(f"Warning: Could not load folder.bmp: {e}. Creating fallback.")
+            print(f"Warning: Could not load banks.bmp: {e}. Creating fallback.")
             self.icon_bank = Image.new('1', (34, 34), 0)
         
         if not OLED_AVAILABLE:
