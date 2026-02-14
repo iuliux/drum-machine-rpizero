@@ -563,7 +563,8 @@ class OLEDHandler:
                 self.device.display(self.image)
                 return
 
-            self.draw.text((5, 47), " ".join(f"{self.MODES[self.sequencer.mode]}"), font=self.font_small, fill=255)
+            # Using U+2009 THIN SPACE for letter spacing
+            self.draw.text((5, 50), " ".join(f"{self.MODES[self.sequencer.mode]}"), font=self.font_small, fill=255)
 
             # Mode Specifics
             if self.sequencer.mode == 'BPM':
@@ -603,7 +604,7 @@ class OLEDHandler:
                 
                 # Show bank number indicator (e.g., "2/3")
                 bank_indicator = f"{self.sequencer.current_bank_idx + 1}/{len(self.sequencer.bank_names)}"
-                self.draw.text((100, 47), bank_indicator, font=self.font_small, fill=255)
+                self.draw.text((100, 50), bank_indicator, font=self.font_small, fill=255)
 
             self.device.display(self.image)
             
