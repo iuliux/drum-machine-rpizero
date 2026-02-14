@@ -220,7 +220,7 @@ class RotaryEncoder:
                 # Change volume by 5%
                 new_vol = round(self.sequencer.volume + (direction * 0.05), 2)
                 self.sequencer.set_volume(new_vol)
-            elif self.sequencer.mode == 'FX':
+            elif self.sequencer.mode == 'DIST':
                 # Control distortion amount
                 self.sequencer.distortion = max(0.0, self.sequencer.distortion + direction * 0.05)
                 self.sequencer.set_distortion(self.sequencer.distortion)
@@ -530,7 +530,7 @@ class OLEDHandler:
             self.draw.rectangle((0, 0, OLED_WIDTH, OLED_HEIGHT), fill=0)
 
             # Define constants for layout
-            value_xoffset = 52
+            value_xoffset = 50
             
             # Common Elements
             status_text = "Running" if self.sequencer.is_playing else "Stopped"
@@ -544,13 +544,15 @@ class OLEDHandler:
             elif self.sequencer.mode == 'VOL':
                 self.image.paste(self.icon_vol, (10, 6))
                 vol_percent = int(self.sequencer.volume * 100)
-                self.draw.text((value_xoffset, 10), f"{vol_percent}%", font=self.font_large, fill=255)
+                vol_text = f"{vol_percent}%"
+                # Draw text with anchor='ra' (right-aligned)
+                self.draw.text((120, 10), vol_text, font=self.font_large, fill=255, anchor='ra')
                 # Draw Volume Bar
                 self.draw.rectangle((value_xoffset, 40, 120, 44), outline=1)
                 fill_width = int(58 * self.sequencer.volume)
                 self.draw.rectangle((value_xoffset, 40, value_xoffset + fill_width, 44), fill=1)
 
-            elif self.sequencer.mode == 'FX':
+            elif self.sequencer.mode == 'DIST':
                 self.image.paste(self.icon_fx, (10, 6))
                 dist_percent = int(self.sequencer.distortion * 100)
                 self.draw.text((value_xoffset, 10), f"{dist_percent}%", font=self.font_large, fill=255)
@@ -786,7 +788,7 @@ class Sequencer:
         self.bpm = bpm
         self.volume = 0.1  # Default volume 10%
         self.distortion = 0.0  # Distortion amount 0.0-1.0
-        self.modes = ['BPM', 'VOL', 'FX']
+        self.modes = ['BPM', 'VOL', 'DIST']
         self.mode_idx = 0
         self.mode = self.modes[self.mode_idx]
         
