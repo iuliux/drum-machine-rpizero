@@ -602,15 +602,22 @@ class OLEDHandler:
                     bank_name = bank_name[:10]
                 self.draw.text((value_xoffset, 5), bank_name, font=self.font_medium, fill=255)
                 
-                # Draw Bank Progress Bar (similar to volume/distortion)
+                # Draw Bank Scrollbar
                 total_banks = len(self.sequencer.bank_names)
                 if total_banks > 1:
-                    # Draw outline
-                    self.draw.rectangle((value_xoffset, 40, 120, 44), outline=1)
-                    # Calculate fill width based on current bank position
-                    bank_progress = self.sequencer.current_bank_idx / (total_banks - 1)
-                    fill_width = int(70 * bank_progress)
-                    self.draw.rectangle((value_xoffset, 40, value_xoffset + fill_width, 44), fill=1)
+                    bar_width = 70
+                    bar_start = value_xoffset
+                    bar_end = bar_start + bar_width
+                    
+                    # Draw outline (track)
+                    self.draw.rectangle((bar_start, 40, bar_end, 44), outline=1)
+                    
+                    # Calculate thumb size and position
+                    thumb_width = bar_width / total_banks
+                    thumb_position = bar_start + (self.sequencer.current_bank_idx * thumb_width)
+                    
+                    # Draw thumb (filled portion representing current bank)
+                    self.draw.rectangle((int(thumb_position), 40, int(thumb_position + thumb_width), 44), fill=1)
 
             self.device.display(self.image)
             
