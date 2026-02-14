@@ -488,7 +488,7 @@ class OLEDHandler:
                 # Try FreeSans Bold first (similar to logisoso)
                 self.font_large = ImageFont.truetype("./fonts/SpaceMono-Bold.ttf", 32)
                 self.font_medium = ImageFont.truetype("./fonts/SpaceMono-Bold.ttf", 20)
-                self.font_small = ImageFont.truetype("./fonts/determination.ttf", 17)
+                self.font_small = ImageFont.truetype("./fonts/determination.ttf", 15)
             except:
                 try:
                     # Fallback to DejaVu Sans Bold
