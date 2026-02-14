@@ -488,7 +488,7 @@ class OLEDHandler:
                 # Try FreeSans Bold first (similar to logisoso)
                 self.font_large = ImageFont.truetype("./fonts/SpaceMono-Bold.ttf", 32)
                 self.font_medium = ImageFont.truetype("./fonts/SpaceMono-Bold.ttf", 20)
-                self.font_small = ImageFont.truetype("./fonts/m42.TTF", 7)
+                self.font_small = ImageFont.truetype("./fonts/m42.TTF", 8)
             except:
                 try:
                     # Fallback to DejaVu Sans Bold
@@ -563,7 +563,7 @@ class OLEDHandler:
                 self.device.display(self.image)
                 return
 
-            self.draw.text((5, 47), f"{self.MODES[self.sequencer.mode]}", font=self.font_small, fill=255)
+            self.draw.text((5, 47), " ".join(f"{self.MODES[self.sequencer.mode]}"), font=self.font_small, fill=255)
 
             # Mode Specifics
             if self.sequencer.mode == 'BPM':
