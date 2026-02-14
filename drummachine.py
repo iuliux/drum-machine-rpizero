@@ -419,6 +419,7 @@ class OLEDHandler:
         self.sequencer = sequencer
         self.device = None
         self.font_large = None
+        self.font_medium = None
         self.font_small = None
         self.update_counter = 0
         
@@ -486,20 +487,17 @@ class OLEDHandler:
             try:
                 # Try FreeSans Bold first (similar to logisoso)
                 self.font_large = ImageFont.truetype("./fonts/SpaceMono-Bold.ttf", 32)
+                self.font_medium = ImageFont.truetype("./fonts/SpaceMono-Bold.ttf", 20)
+                self.font_small = ImageFont.truetype("./fonts/LeagueSpartan-Bold.ttf", 12)
             except:
                 try:
                     # Fallback to DejaVu Sans Bold
                     self.font_large = ImageFont.truetype("/usr/share/fonts/truetype/freefont/FreeSansBold.ttf", 32)
-                except:
-                    self.font_large = ImageFont.load_default()
-            
-            try:
-                # Small font - try to get something condensed and bold
-                self.font_small = ImageFont.truetype("./fonts/LeagueSpartan-Bold.ttf", 12)
-            except:
-                try:
+                    self.font_medium = ImageFont.truetype("/usr/share/fonts/truetype/freefont/FreeSansBold.ttf", 18)
                     self.font_small = ImageFont.truetype("/usr/share/fonts/truetype/freefont/FreeSansBold.ttf", 11)
                 except:
+                    self.font_large = ImageFont.load_default()
+                    self.font_medium = ImageFont.load_default()
                     self.font_small = ImageFont.load_default()
             
             # Clear display
@@ -601,11 +599,11 @@ class OLEDHandler:
                 # Truncate if too long
                 if len(bank_name) > 10:
                     bank_name = bank_name[:10]
-                self.draw.text((value_xoffset, 5), bank_name, font=self.font_large, fill=255)
+                self.draw.text((value_xoffset, 5), bank_name, font=self.font_medium, fill=255)
                 
                 # Show bank number indicator (e.g., "2/3")
                 bank_indicator = f"{self.sequencer.current_bank_idx + 1}/{len(self.sequencer.bank_names)}"
-                self.draw.text((value_xoffset, 50), bank_indicator, font=self.font_small, fill=255)
+                self.draw.text((100, 50), bank_indicator, font=self.font_small, fill=255)
 
             self.device.display(self.image)
             
