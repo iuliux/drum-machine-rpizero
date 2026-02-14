@@ -534,15 +534,15 @@ class OLEDHandler:
             
             # Common Elements
             status_text = "Running" if self.sequencer.is_playing else "Stopped"
-            self.draw.text((10, 50), f"{self.sequencer.mode} | {status_text}", font=self.font_small, fill=255)
+            self.draw.text((5, 50), f"{self.sequencer.mode} | {status_text}", font=self.font_small, fill=255)
 
             # Mode Specifics
             if self.sequencer.mode == 'BPM':
-                self.image.paste(self.icon_metro, (10, 6))
+                self.image.paste(self.icon_metro, (5, 6))
                 self.draw.text((value_xoffset, 10), str(self.sequencer.bpm), font=self.font_large, fill=255)
             
             elif self.sequencer.mode == 'VOL':
-                self.image.paste(self.icon_vol, (10, 6))
+                self.image.paste(self.icon_vol, (5, 6))
                 vol_percent = int(self.sequencer.volume * 100)
                 vol_text = f"{vol_percent}%"
                 # Draw text with anchor='ra' (right-aligned)
@@ -553,9 +553,11 @@ class OLEDHandler:
                 self.draw.rectangle((value_xoffset, 40, value_xoffset + fill_width, 44), fill=1)
 
             elif self.sequencer.mode == 'DIST':
-                self.image.paste(self.icon_fx, (10, 6))
+                self.image.paste(self.icon_fx, (5, 6))
                 dist_percent = int(self.sequencer.distortion * 100)
-                self.draw.text((value_xoffset, 10), f"{dist_percent}%", font=self.font_large, fill=255)
+                dist_text = f"{dist_percent}%"
+                # Draw text with anchor='ra' (right-aligned)
+                self.draw.text((120, 10), dist_text, font=self.font_large, fill=255, anchor='ra')
                 # Draw Distortion Bar
                 self.draw.rectangle((value_xoffset, 40, 120, 44), outline=1)
                 fill_width = int(58 * self.sequencer.distortion)
