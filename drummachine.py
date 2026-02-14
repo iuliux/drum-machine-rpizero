@@ -536,6 +536,9 @@ class OLEDHandler:
             # Clear existing image buffer
             self.draw.rectangle((0, 0, OLED_WIDTH, OLED_HEIGHT), fill=0)
             
+            # Define constants for layout
+            value_xoffset = 50
+            
             # Skip drawing if sequencer is paused - just show mode and a pause icon
             if not self.sequencer.is_playing:
                 # Draw a large pause icon (two vertical bars) in the center
@@ -544,9 +547,6 @@ class OLEDHandler:
                 # Skip the rest of the drawing to save resources when paused
                 self.device.display(self.image)
                 return
-            
-            # Define constants for layout
-            value_xoffset = 50
 
             self.draw.text((5, 50), f"{self.MODES[self.sequencer.mode]}", font=self.font_small, fill=255)
 
