@@ -601,11 +601,11 @@ class OLEDHandler:
                 # Truncate if too long
                 if len(bank_name) > 10:
                     bank_name = bank_name[:10]
-                self.draw.text((value_xoffset, 5), bank_name, font=self.font_small, fill=255)
+                self.draw.text((value_xoffset, 5), bank_name, font=self.font_large, fill=255)
                 
                 # Show bank number indicator (e.g., "2/3")
                 bank_indicator = f"{self.sequencer.current_bank_idx + 1}/{len(self.sequencer.bank_names)}"
-                self.draw.text((value_xoffset, 25), bank_indicator, font=self.font_small, fill=255)
+                self.draw.text((value_xoffset, 50), bank_indicator, font=self.font_small, fill=255)
 
             self.device.display(self.image)
             
