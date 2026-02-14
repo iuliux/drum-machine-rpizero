@@ -534,7 +534,7 @@ class OLEDHandler:
             
             # Common Elements
             status_text = "Running" if self.sequencer.is_playing else "Stopped"
-            self.draw.text((5, 55), f"{self.sequencer.mode} | {status_text}", font=self.font_small, fill=255)
+            self.draw.text((5, 50), f"{self.sequencer.mode} | {status_text}", font=self.font_small, fill=255)
 
             # Mode Specifics
             if self.sequencer.mode == 'BPM':
