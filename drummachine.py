@@ -539,14 +539,14 @@ class OLEDHandler:
             # Mode Specifics
             if self.sequencer.mode == 'BPM':
                 self.image.paste(self.icon_metro, (5, 6))
-                self.draw.text((value_xoffset, 10), str(self.sequencer.bpm), font=self.font_large, fill=255)
+                self.draw.text((value_xoffset, 0), str(self.sequencer.bpm), font=self.font_large, fill=255)
             
             elif self.sequencer.mode == 'VOL':
                 self.image.paste(self.icon_vol, (5, 6))
                 vol_percent = int(self.sequencer.volume * 100)
                 vol_text = f"{vol_percent}%"
                 # Draw text with anchor='ra' (right-aligned)
-                self.draw.text((120, 10), vol_text, font=self.font_large, fill=255, anchor='ra')
+                self.draw.text((120, 0), vol_text, font=self.font_large, fill=255, anchor='ra')
                 # Draw Volume Bar
                 self.draw.rectangle((value_xoffset, 40, 120, 44), outline=1)
                 fill_width = int(58 * self.sequencer.volume)
@@ -557,7 +557,7 @@ class OLEDHandler:
                 dist_percent = int(self.sequencer.distortion * 100)
                 dist_text = f"{dist_percent}%"
                 # Draw text with anchor='ra' (right-aligned)
-                self.draw.text((120, 10), dist_text, font=self.font_large, fill=255, anchor='ra')
+                self.draw.text((120, 0), dist_text, font=self.font_large, fill=255, anchor='ra')
                 # Draw Distortion Bar
                 self.draw.rectangle((value_xoffset, 40, 120, 44), outline=1)
                 fill_width = int(58 * self.sequencer.distortion)
