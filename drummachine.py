@@ -602,9 +602,15 @@ class OLEDHandler:
                     bank_name = bank_name[:10]
                 self.draw.text((value_xoffset, 5), bank_name, font=self.font_medium, fill=255)
                 
-                # Show bank number indicator (e.g., "2/3")
-                bank_indicator = f"{self.sequencer.current_bank_idx + 1}/{len(self.sequencer.bank_names)}"
-                self.draw.text((100, 50), bank_indicator, font=self.font_small, fill=255)
+                # Draw Bank Progress Bar (similar to volume/distortion)
+                total_banks = len(self.sequencer.bank_names)
+                if total_banks > 1:
+                    # Draw outline
+                    self.draw.rectangle((value_xoffset, 40, 120, 44), outline=1)
+                    # Calculate fill width based on current bank position
+                    bank_progress = self.sequencer.current_bank_idx / (total_banks - 1)
+                    fill_width = int(70 * bank_progress)
+                    self.draw.rectangle((value_xoffset, 40, value_xoffset + fill_width, 44), fill=1)
 
             self.device.display(self.image)
             
