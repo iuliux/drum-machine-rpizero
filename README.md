@@ -1,3 +1,5 @@
+# Setup
+
 ## Configure I2S
 
 Add line to `/boot/firmware/config.txt`:
@@ -47,11 +49,16 @@ sudo systemctl stop drummachine
 ## System optimizations
 
 ```
-#Disable Bluetooth
+# Disable Bluetooth
 sudo systemctl disable bluetooth
 sudo systemctl stop bluetooth
 
-#Reduce swappiness
+# More to disable (to maybe improve boot time)
+sudo systemctl disable hciuart
+sudo systemctl disable triggerhappy
+sudo systemctl disable ModemManager
+
+# Reduce swappiness
 sudo sysctl vm.swappiness=10
 
 # CPU performance mode
