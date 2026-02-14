@@ -534,7 +534,7 @@ class OLEDHandler:
             
             # Common Elements
             status_text = "Running" if self.sequencer.is_playing else "Stopped"
-            self.draw.text((5, 50), f"{self.sequencer.mode} | {status_text}", font=self.font_small, fill=255)
+            self.draw.text((5, 55), f"{self.sequencer.mode} | {status_text}", font=self.font_small, fill=255)
 
             # Mode Specifics
             if self.sequencer.mode == 'BPM':
@@ -548,9 +548,9 @@ class OLEDHandler:
                 # Draw text with anchor='ra' (right-aligned)
                 self.draw.text((120, 0), vol_text, font=self.font_large, fill=255, anchor='ra')
                 # Draw Volume Bar
-                self.draw.rectangle((value_xoffset, 40, 120, 44), outline=1)
+                self.draw.rectangle((value_xoffset, 45, 120, 44), outline=1)
                 fill_width = int(58 * self.sequencer.volume)
-                self.draw.rectangle((value_xoffset, 40, value_xoffset + fill_width, 44), fill=1)
+                self.draw.rectangle((value_xoffset, 45, value_xoffset + fill_width, 44), fill=1)
 
             elif self.sequencer.mode == 'DIST':
                 self.image.paste(self.icon_fx, (5, 6))
@@ -559,9 +559,9 @@ class OLEDHandler:
                 # Draw text with anchor='ra' (right-aligned)
                 self.draw.text((120, 0), dist_text, font=self.font_large, fill=255, anchor='ra')
                 # Draw Distortion Bar
-                self.draw.rectangle((value_xoffset, 40, 120, 44), outline=1)
+                self.draw.rectangle((value_xoffset, 45, 120, 44), outline=1)
                 fill_width = int(58 * self.sequencer.distortion)
-                self.draw.rectangle((value_xoffset, 40, value_xoffset + fill_width, 44), fill=1)
+                self.draw.rectangle((value_xoffset, 45, value_xoffset + fill_width, 44), fill=1)
 
             self.device.display(self.image)
             
