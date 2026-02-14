@@ -549,7 +549,8 @@ class OLEDHandler:
             self.draw.rectangle((0, 0, OLED_WIDTH, OLED_HEIGHT), fill=0)
             
             # Define constants for layout
-            value_xoffset = 50
+            value_xoffset = 46
+            icon_xoffset = 5
             
             # Pause Icon if not playing
             if not self.sequencer.is_playing:
@@ -564,15 +565,15 @@ class OLEDHandler:
                 return
 
             # Using U+2009 THIN SPACE for letter spacing
-            self.draw.text((5, 50), " ".join(f"{self.MODES[self.sequencer.mode]}"), font=self.font_small, fill=255)
+            self.draw.text((icon_xoffset, 50), " ".join(f"{self.MODES[self.sequencer.mode]}"), font=self.font_small, fill=255)
 
             # Mode Specifics
             if self.sequencer.mode == 'BPM':
-                self.image.paste(self.icon_metro, (5, 6))
+                self.image.paste(self.icon_metro, (icon_xoffset, 6))
                 self.draw.text((value_xoffset, 0), str(self.sequencer.bpm), font=self.font_large, fill=255)
             
             elif self.sequencer.mode == 'VOL':
-                self.image.paste(self.icon_vol, (5, 6))
+                self.image.paste(self.icon_vol, (icon_xoffset, 6))
                 vol_percent = int(self.sequencer.volume * 100)
                 vol_text = f"{vol_percent}%"
                 # Draw text with anchor='ra' (right-aligned)
@@ -583,7 +584,7 @@ class OLEDHandler:
                 self.draw.rectangle((value_xoffset, 40, value_xoffset + fill_width, 44), fill=1)
 
             elif self.sequencer.mode == 'DIST':
-                self.image.paste(self.icon_fx, (5, 6))
+                self.image.paste(self.icon_fx, (icon_xoffset, 6))
                 dist_percent = int(self.sequencer.distortion * 100)
                 dist_text = f"{dist_percent}%"
                 # Draw text with anchor='ra' (right-aligned)
@@ -594,7 +595,7 @@ class OLEDHandler:
                 self.draw.rectangle((value_xoffset, 40, value_xoffset + fill_width, 44), fill=1)
             
             elif self.sequencer.mode == 'BANK':
-                self.image.paste(self.icon_bank, (5, 6))
+                self.image.paste(self.icon_bank, (icon_xoffset, 6))
                 # Display current bank name
                 bank_name = self.sequencer.current_bank_name.upper()
                 # Truncate if too long
