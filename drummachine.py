@@ -466,7 +466,7 @@ class OLEDHandler:
             # Try to load fonts - aim for bold, chunky look like Arduino u8g2
             try:
                 # Try FreeSans Bold first (similar to logisoso)
-                self.font_large = ImageFont.truetype("./fonts/VT323-Regular.ttf", 38)
+                self.font_large = ImageFont.truetype("./fonts/SpaceMono-Bold.ttf", 34)
             except:
                 try:
                     # Fallback to DejaVu Sans Bold
