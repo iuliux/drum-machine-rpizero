@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
 Simple 8-step, 3-instrument drum machine sequencer for Raspberry Pi Zero 2 W
+With multiple sound bank support
 """
 
 import os
@@ -150,7 +151,7 @@ class RotaryEncoder:
     Features:
     - Rotate: Changes value based on current mode
     - Short Press: Toggle Play/Stop
-    - Long Press: Cycle Modes (BPM -> VOL -> FX)
+    - Long Press: Cycle Modes (BPM -> VOL -> DIST -> BANK)
     """
     def __init__(self, sequencer, clk_pin=ENCODER_CLK_PIN, dt_pin=ENCODER_DT_PIN, sw_pin=ENCODER_SW_PIN):
         self.sequencer = sequencer
@@ -225,6 +226,9 @@ class RotaryEncoder:
                 self.sequencer.distortion = max(0.0, self.sequencer.distortion + direction * 0.05)
                 self.sequencer.set_distortion(self.sequencer.distortion)
                 print(f"Distortion: {self.sequencer.distortion:.2f}")
+            elif self.sequencer.mode == 'BANK':
+                # Cycle through sound banks
+                self.sequencer.cycle_bank(direction)
         except Exception as e:
             print(f"Error handling rotation: {e}")
     
@@ -423,6 +427,7 @@ class OLEDHandler:
         self.last_mode = ""
         self.last_vol = -1
         self.last_dist = -1
+        self.last_bank = ""
 
         self.MODES = {
             'BPM': 'TEMPO',
@@ -460,6 +465,13 @@ class OLEDHandler:
             print(f"Warning: Could not load distortion.bmp: {e}. Creating fallback.")
             self.icon_fx = Image.new('1', (34, 34), 0)
         
+        # Load Bank/Folder icon from file (34x34)
+        try:
+            icon_path = Path(__file__).parent / "icons" / "folder.bmp"
+            self.icon_bank = Image.open(icon_path).convert('1')
+        except Exception as e:
+            print(f"Warning: Could not load folder.bmp: {e}. Creating fallback.")
+            self.icon_bank = Image.new('1', (34, 34), 0)
         
         if not OLED_AVAILABLE:
             print("OLED disabled - libraries not available")
@@ -516,11 +528,12 @@ class OLEDHandler:
         if self.device is None:
             return
         
-        # Update logic: Redraw if mode, bpm, volume, or distortion changes, OR every 20th frame (heartbeat)
+        # Update logic: Redraw if mode, bpm, volume, distortion, or bank changes, OR every 20th frame (heartbeat)
         state_changed = (self.sequencer.bpm != self.last_bpm or 
                          self.sequencer.mode != self.last_mode or
                          self.sequencer.volume != self.last_vol or
-                         self.sequencer.distortion != self.last_dist)
+                         self.sequencer.distortion != self.last_dist or
+                         self.sequencer.current_bank_name != self.last_bank)
         
         self.update_counter += 1
         if not state_changed and self.update_counter < 20:
@@ -531,6 +544,7 @@ class OLEDHandler:
         self.last_mode = self.sequencer.mode
         self.last_vol = self.sequencer.volume
         self.last_dist = self.sequencer.distortion
+        self.last_bank = self.sequencer.current_bank_name
         
         try:
             # Clear existing image buffer
@@ -566,7 +580,7 @@ class OLEDHandler:
                 self.draw.text((120, 0), vol_text, font=self.font_large, fill=255, anchor='ra')
                 # Draw Volume Bar
                 self.draw.rectangle((value_xoffset, 40, 120, 44), outline=1)
-                fill_width = int(58 * self.sequencer.volume)
+                fill_width = int(70 * self.sequencer.volume)
                 self.draw.rectangle((value_xoffset, 40, value_xoffset + fill_width, 44), fill=1)
 
             elif self.sequencer.mode == 'DIST':
@@ -577,8 +591,21 @@ class OLEDHandler:
                 self.draw.text((120, 0), dist_text, font=self.font_large, fill=255, anchor='ra')
                 # Draw Distortion Bar
                 self.draw.rectangle((value_xoffset, 40, 120, 44), outline=1)
-                fill_width = int(58 * self.sequencer.distortion)
+                fill_width = int(70 * self.sequencer.distortion)
                 self.draw.rectangle((value_xoffset, 40, value_xoffset + fill_width, 44), fill=1)
+            
+            elif self.sequencer.mode == 'BANK':
+                self.image.paste(self.icon_bank, (5, 6))
+                # Display current bank name
+                bank_name = self.sequencer.current_bank_name.upper()
+                # Truncate if too long
+                if len(bank_name) > 10:
+                    bank_name = bank_name[:10]
+                self.draw.text((value_xoffset, 5), bank_name, font=self.font_small, fill=255)
+                
+                # Show bank number indicator (e.g., "2/3")
+                bank_indicator = f"{self.sequencer.current_bank_idx + 1}/{len(self.sequencer.bank_names)}"
+                self.draw.text((value_xoffset, 25), bank_indicator, font=self.font_small, fill=255)
 
             self.device.display(self.image)
             
@@ -802,44 +829,83 @@ class TouchHandler:
 
 
 class Sequencer:
-    """Main sequencer engine"""
+    """Main sequencer engine with multi-bank support"""
     def __init__(self, bpm=120):
         self.bpm = bpm
         self.volume = 0.1  # Default volume 10%
         self.distortion = 0.0  # Distortion amount 0.0-1.0
-        self.modes = ['BPM', 'VOL', 'DIST']
+        self.modes = ['BPM', 'VOL', 'DIST', 'BANK']
         self.mode_idx = 0
         self.mode = self.modes[self.mode_idx]
         
         self.current_step = 0
         self.pattern = np.zeros((NUM_INSTRUMENTS, NUM_STEPS), dtype=bool)
         self.is_playing = False
-        self.sample_banks = {}  # Dictionary of lists of samples per instrument
+        
+        # Bank management
+        self.bank_names = []  # List of bank folder names
+        self.current_bank_idx = 0
+        self.current_bank_name = ""
+        self.sample_banks = {}  # Dictionary: {bank_name: {instrument_name: [samples]}}
+        
         self.active_voices = []  # List of currently playing samples
         self.lock = threading.Lock()
         
-        # Load samples
-        self.load_samples()
+        # Load samples from all banks
+        self.discover_banks()
+        self.load_all_banks()
         
         # Audio stream
         self.stream = None
-        
-    def load_samples(self):
-        """Load drum samples from audio folder structure"""
+    
+    def discover_banks(self):
+        """Discover all available sound banks in the audio folder"""
         if not AUDIO_BASE_PATH.exists():
             print(f"Warning: Audio path {AUDIO_BASE_PATH} does not exist!")
-            print("Creating placeholder samples...")
-            # Create placeholder samples if no audio folder
-            for name in INSTRUMENT_NAMES:
-                self.sample_banks[name] = [self._create_placeholder_sample(name)]
+            self.bank_names = ['default']
             return
         
+        # Find all subdirectories in audio folder (each is a bank)
+        bank_paths = [d for d in AUDIO_BASE_PATH.iterdir() if d.is_dir()]
+        
+        if not bank_paths:
+            print("Warning: No sound banks found")
+            self.bank_names = ['default']
+            return
+        
+        # Sort banks alphabetically
+        self.bank_names = sorted([d.name for d in bank_paths])
+        self.current_bank_name = self.bank_names[0]
+        
+        print(f"Discovered {len(self.bank_names)} sound banks: {', '.join(self.bank_names)}")
+    
+    def load_all_banks(self):
+        """Load samples from all available banks"""
+        for bank_name in self.bank_names:
+            self.load_bank(bank_name)
+    
+    def load_bank(self, bank_name):
+        """Load samples for a specific bank"""
+        bank_path = AUDIO_BASE_PATH / bank_name
+        
+        if not bank_path.exists():
+            print(f"Warning: Bank path {bank_path} does not exist!")
+            # Create placeholder bank
+            self.sample_banks[bank_name] = {
+                name: [self._create_placeholder_sample(name)] 
+                for name in INSTRUMENT_NAMES
+            }
+            return
+        
+        # Initialize bank dictionary
+        bank_samples = {}
+        
         for instrument_name in INSTRUMENT_NAMES:
-            instrument_path = AUDIO_BASE_PATH / instrument_name
+            instrument_path = bank_path / instrument_name
             
             if not instrument_path.exists():
                 print(f"Warning: {instrument_path} not found, using placeholder")
-                self.sample_banks[instrument_name] = [self._create_placeholder_sample(instrument_name)]
+                bank_samples[instrument_name] = [self._create_placeholder_sample(instrument_name)]
                 continue
             
             # Find all .wav files in this instrument folder
@@ -847,7 +913,7 @@ class Sequencer:
             
             if not wav_files:
                 print(f"Warning: No .wav files found in {instrument_path}")
-                self.sample_banks[instrument_name] = [self._create_placeholder_sample(instrument_name)]
+                bank_samples[instrument_name] = [self._create_placeholder_sample(instrument_name)]
                 continue
             
             # Load all samples for this instrument
@@ -857,8 +923,10 @@ class Sequencer:
                 if sample.data is not None:
                     samples.append(sample)
             
-            self.sample_banks[instrument_name] = samples
-            print(f"{instrument_name}: loaded {len(samples)} samples")
+            bank_samples[instrument_name] = samples
+            print(f"{bank_name}/{instrument_name}: loaded {len(samples)} samples")
+        
+        self.sample_banks[bank_name] = bank_samples
     
     def _create_placeholder_sample(self, instrument_name):
         """Create a simple beep as placeholder"""
@@ -869,6 +937,29 @@ class Sequencer:
         class PS: 
             def __init__(self, d): self.data = d
         return PS(data)
+    
+    def cycle_bank(self, direction):
+        """Switch to next or previous sound bank"""
+        if len(self.bank_names) <= 1:
+            print("Only one bank available")
+            return
+        
+        self.current_bank_idx = (self.current_bank_idx + direction) % len(self.bank_names)
+        self.current_bank_name = self.bank_names[self.current_bank_idx]
+        print(f"Switched to bank: {self.current_bank_name}")
+    
+    def get_current_samples(self, instrument_name):
+        """Get samples for the current bank and instrument"""
+        if self.current_bank_name not in self.sample_banks:
+            print(f"Warning: Bank {self.current_bank_name} not loaded")
+            return [self._create_placeholder_sample(instrument_name)]
+        
+        bank = self.sample_banks[self.current_bank_name]
+        if instrument_name not in bank:
+            print(f"Warning: Instrument {instrument_name} not in bank {self.current_bank_name}")
+            return [self._create_placeholder_sample(instrument_name)]
+        
+        return bank[instrument_name]
     
     def toggle_step(self, instrument_idx, step_idx):
         """Toggle a step on/off for a given instrument"""
@@ -894,12 +985,15 @@ class Sequencer:
         self.mode = self.modes[self.mode_idx]
 
     def trigger_samples(self, step):
-        """Trigger samples for the current step"""
+        """Trigger samples for the current step using current bank"""
         with self.lock:
             for inst_idx, instrument_name in enumerate(INSTRUMENT_NAMES):
                 if self.pattern[inst_idx, step]:
+                    # Get samples from current bank
+                    available_samples = self.get_current_samples(instrument_name)
+                    
                     # Randomly select a sample from this instrument's bank
-                    selected_sample = random.choice(self.sample_banks[instrument_name])
+                    selected_sample = random.choice(available_samples)
                     
                     # Add sample to active voices with position counter
                     self.active_voices.append({
@@ -1059,6 +1153,8 @@ def main():
     
     print("\nSequencer running.")
     print("- LEDs: Red=Kick, Green=Snare, Blue=Hihat, White=Current step")
+    print(f"- Current bank: {seq.current_bank_name}")
+    print("- Rotary encoder: Rotate to adjust current mode, Long press to cycle modes")
     print("Press Ctrl+C to stop.\n")
     
     # LED update thread (separate from main loop to avoid blocking touch/audio)
