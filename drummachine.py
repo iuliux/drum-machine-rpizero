@@ -600,7 +600,7 @@ class OLEDHandler:
                 # Truncate if too long
                 if len(bank_name) > 10:
                     bank_name = bank_name[:10]
-                self.draw.text((value_xoffset, 5), bank_name, font=self.font_medium, fill=255)
+                self.draw.text((value_xoffset, 10), bank_name, font=self.font_medium, fill=255)
                 
                 # Draw Bank Scrollbar
                 total_banks = len(self.sequencer.bank_names)
