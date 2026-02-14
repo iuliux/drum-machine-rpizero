@@ -542,8 +542,31 @@ class OLEDHandler:
             # Skip drawing if sequencer is paused - just show mode and a pause icon
             if not self.sequencer.is_playing:
                 # Draw a large pause icon (two vertical bars) in the center
-                self.draw.rectangle((value_xoffset, 10, value_xoffset + 10, 40), fill=255)
-                self.draw.rectangle((value_xoffset, 50, value_xoffset + 10, 80), fill=255)
+                # Calculate center position
+                center_x = OLED_WIDTH // 2  # 64
+                center_y = OLED_HEIGHT // 2  # 32
+                
+                # Bar dimensions
+                bar_width = 10
+                bar_height = 30
+                bar_spacing = 8  # Space between the two bars
+                
+                # Left bar
+                left_bar_x = center_x - bar_spacing // 2 - bar_width
+                self.draw.rectangle(
+                    (left_bar_x, center_y - bar_height // 2, 
+                    left_bar_x + bar_width, center_y + bar_height // 2), 
+                    fill=255
+                )
+                
+                # Right bar
+                right_bar_x = center_x + bar_spacing // 2
+                self.draw.rectangle(
+                    (right_bar_x, center_y - bar_height // 2, 
+                    right_bar_x + bar_width, center_y + bar_height // 2), 
+                    fill=255
+                )
+                
                 # Skip the rest of the drawing to save resources when paused
                 self.device.display(self.image)
                 return
