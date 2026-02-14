@@ -423,6 +423,13 @@ class OLEDHandler:
         self.last_mode = ""
         self.last_vol = -1
         self.last_dist = -1
+
+        self.MODES = {
+            'BPM': 'TEMPO',
+            'VOL': 'VOLUME',
+            'DIST': 'DISTORTION',
+            'BANK': 'SAMPLES'
+        }
         
         # Pre-allocate image buffers (Optimization)
         self.image = Image.new('1', (OLED_WIDTH, OLED_HEIGHT))
@@ -528,13 +535,20 @@ class OLEDHandler:
         try:
             # Clear existing image buffer
             self.draw.rectangle((0, 0, OLED_WIDTH, OLED_HEIGHT), fill=0)
-
+            
+            # Skip drawing if sequencer is paused - just show mode and a pause icon
+            if not self.sequencer.is_playing:
+                # Draw a large pause icon (two vertical bars) in the center
+                self.draw.rectangle((value_xoffset, 10, value_xoffset + 10, 40), fill=255)
+                self.draw.rectangle((value_xoffset, 50, value_xoffset + 10, 80), fill=255)
+                # Skip the rest of the drawing to save resources when paused
+                self.device.display(self.image)
+                return
+            
             # Define constants for layout
             value_xoffset = 50
-            
-            # Common Elements
-            status_text = "Running" if self.sequencer.is_playing else "Stopped"
-            self.draw.text((5, 50), f"{self.sequencer.mode} | {status_text}", font=self.font_small, fill=255)
+
+            self.draw.text((5, 50), f"{self.MODES[self.sequencer.mode]}", font=self.font_small, fill=255)
 
             # Mode Specifics
             if self.sequencer.mode == 'BPM':
