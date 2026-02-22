@@ -512,6 +512,11 @@ class OLEDHandler:
             
             # Clear display
             self.device.clear()
+
+            # Add a startup message
+            self.draw.rectangle((0, 0, OLED_WIDTH, OLED_HEIGHT), fill=0)
+            self.draw.text((10, 25), "Drum Sick", font=self.font_large, fill=255)
+            self.device.display(self.image)
         except Exception as e:
             print(f"Error initializing OLED: {e}")
             self.device = None
