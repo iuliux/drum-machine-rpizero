@@ -4,6 +4,13 @@ Simple 8-step, 3-instrument drum machine sequencer for Raspberry Pi Zero 2 W
 With multiple sound bank support
 """
 
+import time
+start_time = time.time()
+def log_time(msg):
+    print(f"[{time.time() - start_time:.2f}s] {msg}")
+
+log_time("Script started")
+
 import os
 import sys
 import numpy as np
@@ -13,6 +20,7 @@ import time
 import threading
 import random
 from pathlib import Path
+
 
 # --- GPIO/Hardware Setup for Systemd Service ---
 # Set gpiozero factory before any GPIO imports if running as systemd service
@@ -55,6 +63,8 @@ try:
 except (ImportError, RuntimeError) as e:
     GPIOZERO_AVAILABLE = False
     print(f"Warning: gpiozero not available: {e}")
+
+log_time("Imports done")
 
 # Audio configuration
 SAMPLE_RATE = 44100
@@ -1132,23 +1142,29 @@ class Sequencer:
 def main():
     """Main program entry point"""
     print("Raspberry Pi Drum Machine")
+    log_time("Main entered")
     print("=" * 40)
     
     # Create sequencer
     seq = Sequencer(bpm=120)
+    log_time("Sequencer initialized")
     
     # Initialize touch handler (gpiozero handles GPIO setup)
     touch = TouchHandler(seq, use_irq=False)
+    log_time("Touch initialized")
     
     # Initialize OLED display
     oled = OLEDHandler(seq)
+    log_time("OLED initialized")
 
     # Initialize LED handler
     leds = LEDHandler(seq)
     step_indicator = StepIndicatorHandler(seq)
+    log_time("LEDs initialized")
     
     # Initialize rotary encoder (gpiozero handles its own GPIO setup)
     encoder = RotaryEncoder(seq)
+    log_time("Encoder initialized")
     
     # Set up a simple test pattern (for testing without touch sensors)
     # Kick on steps 0, 4
@@ -1163,6 +1179,7 @@ def main():
     
     # Start playback
     seq.start()
+    log_time("Playback started")
     
     print("\nSequencer running.")
     print("- LEDs: Red=Kick, Green=Snare, Blue=Hihat, White=Current step")
