@@ -1,0 +1,18 @@
+[Unit]
+Description=Drum Machine Git Update
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/home/pi/drum-machine-rpizero
+
+ExecStart=/bin/bash /home/pi/drum-machine-rpizero/scripts/git-update.sh
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=drummachine-update
+
+[Install]
+WantedBy=multi-user.target

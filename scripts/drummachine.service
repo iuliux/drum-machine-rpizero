@@ -1,11 +1,6 @@
 [Unit]
 Description=Drum Machine Sequencer
-# Wait for network target to be reached (but don't require active network)
-After=network-online.target
-Wants=network-online.target
-# Make sure we wait for all startup jobs to finish
-After=rc-local.service
-# Only start if this is a real boot, not in containers
+After=basic.target
 ConditionVirtualization=!container
 
 [Service]
@@ -13,10 +8,7 @@ ConditionVirtualization=!container
 User=root
 WorkingDirectory=/home/pi/drum-machine-rpizero
 
-# Give the system 10 seconds to stabilize after network comes up
-ExecStartPre=/bin/sleep 10
-
-# Run the startup script
+# Start immediately - no network wait
 ExecStart=/bin/bash /home/pi/drum-machine-rpizero/scripts/drummachine-start.sh
 
 # Restart if it crashes
@@ -38,5 +30,4 @@ StandardError=journal
 SyslogIdentifier=drummachine
 
 [Install]
-# Start after multi-user target (normal system boot)
 WantedBy=multi-user.target
