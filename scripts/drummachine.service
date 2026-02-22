@@ -1,6 +1,6 @@
 [Unit]
 Description=Drum Machine Sequencer
-After=basic.target
+After=basic.target systemd-modules-load.service
 ConditionVirtualization=!container
 
 [Service]

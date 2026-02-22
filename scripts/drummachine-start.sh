@@ -13,4 +13,4 @@ export GPIOZERO_PIN_FACTORY=lgpio
 
 # Run the drum machine with error handling
 # Run directly as the service user (systemd will apply realtime scheduling)
-exec /usr/bin/python3 /home/pi/drum-machine-rpizero/drummachine.py
+exec /usr/bin/python3 -u /home/pi/drum-machine-rpizero/drummachine.py
