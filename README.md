@@ -54,9 +54,10 @@ sudo systemctl disable bluetooth
 sudo systemctl stop bluetooth
 
 # More to disable (to maybe improve boot time)
-sudo systemctl disable hciuart
-sudo systemctl disable triggerhappy
 sudo systemctl disable ModemManager
+
+# Disable all cloud-init services
+sudo touch /etc/cloud/cloud-init.disabled
 
 # Reduce swappiness
 sudo sysctl vm.swappiness=10
