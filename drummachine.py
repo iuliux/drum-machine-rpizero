@@ -1070,8 +1070,10 @@ class Sequencer:
                 # Soft clipping via tanh
                 outdata[:, 0] = np.tanh(driven / (self.volume + 1e-6)) * self.volume
             
-            # Apply Master Volume
-            outdata[:] *= self.volume
+            # Apply Master Volume with logarithmic curve (volume squared for natural feel)
+            # This makes lower values much quieter: 5% -> 0.25%, 10% -> 1%, etc.
+            actual_volume = self.volume ** 2
+            outdata[:] *= actual_volume
     
     def sequencer_thread(self):
         """Main sequencer loop running in separate thread"""
