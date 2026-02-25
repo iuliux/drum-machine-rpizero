@@ -124,7 +124,12 @@ COLORS = {
 TIME_SIGNATURES = {
     '4/4':  [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
     '3+5':  [4/3, 4/3, 4/3, 4/5, 4/5, 4/5, 4/5, 4/5],
-    'TRES': [s * 8/9 for s in [1.5, 1.5, 1.0, 1.5, 1.5, 1.0, 0.5, 0.5]],
+    # 3-against-2 polyrhythm (reggaeton dembow feel).
+    # 3-rhythm hits at bar positions 0, 8/3, 16/3; 2-rhythm hits at 0, 4.
+    # The 4 distinct hit positions are: 0, 8/3, 4, 16/3 — inter-hit durations
+    # are [8/3, 4/3, 4/3, 8/3] summing to one full bar.
+    # Halved and tiled twice across 8 steps: [4/3, 2/3, 2/3, 4/3] × 2, sum = 8.
+    'TRES': [4/3, 2/3, 2/3, 4/3, 4/3, 2/3, 2/3, 4/3],
     'DRNK': [1.5, 1.5, 5/6, 5/6, 5/6, 5/6, 5/6, 5/6],
 }
 TIME_SIG_NAMES = list(TIME_SIGNATURES.keys())
