@@ -110,6 +110,25 @@ COLORS = {
     'current': (255, 255, 255)  # White for current step indicator
 }
 
+# Time signature definitions.
+# Each entry has 8 step-duration multipliers relative to a standard 8th note.
+# All multipliers sum to 8.0 so every pattern occupies the same bar length.
+#
+# 4/4       - straight: 8 equal 8th notes
+# 3/4 + 5/4 - two-bar hybrid: first 3 steps fill a 3/4 bar (each = 4/3 of an
+#             8th note), next 5 steps fill a 5/4 bar (each = 4/5 of an 8th note)
+# Tresillo  - 3-3-2 clave feel doubled across the bar: raw durations
+#             [1.5,1.5,1.0, 1.5,1.5,1.0, 0.5,0.5] rescaled by 8/9 to fit 8.0
+# Drunk 4/4 - beat 1 = 2 fat dotted 8ths (×1.5), beats 2-4 = 6 laid-back
+#             16th triplets (×5/6 each); sum = 3.0 + 5.0 = 8.0
+TIME_SIGNATURES = {
+    '4/4':  [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+    '3+5':  [4/3, 4/3, 4/3, 4/5, 4/5, 4/5, 4/5, 4/5],
+    'TRES': [s * 8/9 for s in [1.5, 1.5, 1.0, 1.5, 1.5, 1.0, 0.5, 0.5]],
+    'DRNK': [1.5, 1.5, 5/6, 5/6, 5/6, 5/6, 5/6, 5/6],
+}
+TIME_SIG_NAMES = list(TIME_SIGNATURES.keys())
+
 # --- Classes ---
 
 class DrumSample:
@@ -161,7 +180,7 @@ class RotaryEncoder:
     Features:
     - Rotate: Changes value based on current mode
     - Short Press: Toggle Play/Stop
-    - Long Press: Cycle Modes (BPM -> VOL -> DIST -> BANK)
+    - Long Press: Cycle Modes (BPM -> VOL -> DIST -> BANK -> TIME)
     """
     def __init__(self, sequencer, clk_pin=ENCODER_CLK_PIN, dt_pin=ENCODER_DT_PIN, sw_pin=ENCODER_SW_PIN):
         self.sequencer = sequencer
@@ -239,6 +258,9 @@ class RotaryEncoder:
             elif self.sequencer.mode == 'BANK':
                 # Cycle through sound banks
                 self.sequencer.cycle_bank(direction)
+            elif self.sequencer.mode == 'TIMESIG':
+                # Cycle through time signatures
+                self.sequencer.cycle_time_sig(direction)
         except Exception as e:
             print(f"Error handling rotation: {e}")
     
@@ -439,12 +461,14 @@ class OLEDHandler:
         self.last_vol = -1
         self.last_dist = -1
         self.last_bank = ""
+        self.last_time_sig = ""
 
         self.MODES = {
             'BPM': 'TEMPO',
             'VOL': 'VOLUME',
             'DIST': 'DISTORTION',
-            'BANK': 'SAMPLES'
+            'BANK': 'SAMPLES',
+            'TIMESIG': 'TIME SIG',
         }
         
         # Pre-allocate image buffers (Optimization)
@@ -483,6 +507,14 @@ class OLEDHandler:
         except Exception as e:
             print(f"Warning: Could not load banks.bmp: {e}. Creating fallback.")
             self.icon_bank = Image.new('1', (34, 34), 0)
+        
+        # Load Time Sig icon from file (34x34)
+        try:
+            icon_path = Path(__file__).parent / "icons" / "timesig.bmp"
+            self.icon_time = Image.open(icon_path).convert('1')
+        except Exception as e:
+            print(f"Warning: Could not load timesig.bmp: {e}. Creating fallback.")
+            self.icon_time = Image.new('1', (34, 34), 0)
         
         if not OLED_AVAILABLE:
             print("OLED disabled - libraries not available")
@@ -536,6 +568,19 @@ class OLEDHandler:
         img.putdata(pixels)
         return img
     
+    def _draw_step_duration_bars(self, y_top, bar_total_width, bar_height=6):
+        """Draw 8 proportional bars representing step durations for the current time signature"""
+        steps = TIME_SIGNATURES[self.sequencer.current_time_sig]
+        GAP = 1  # px gap between step blocks
+        drawable_width = bar_total_width - GAP * (NUM_STEPS - 1)
+        display_step = (self.sequencer.current_step - 1) % NUM_STEPS
+        x = 46  # value_xoffset
+        for i, weight in enumerate(steps):
+            w = max(1, int(drawable_width * weight / 8.0))
+            is_current = self.sequencer.is_playing and (i == display_step)
+            self.draw.rectangle((x, y_top, x + w - 1, y_top + bar_height), outline=1, fill=(1 if is_current else 0))
+            x += w + GAP
+
     def update(self):
         """Update OLED display with current BPM and status"""
         if self.device is None:
@@ -546,7 +591,8 @@ class OLEDHandler:
                          self.sequencer.mode != self.last_mode or
                          self.sequencer.volume != self.last_vol or
                          self.sequencer.distortion != self.last_dist or
-                         self.sequencer.current_bank_name != self.last_bank)
+                         self.sequencer.current_bank_name != self.last_bank or
+                         self.sequencer.current_time_sig != self.last_time_sig)
         
         self.update_counter += 1
         if not state_changed and self.update_counter < 20:
@@ -558,6 +604,7 @@ class OLEDHandler:
         self.last_vol = self.sequencer.volume
         self.last_dist = self.sequencer.distortion
         self.last_bank = self.sequencer.current_bank_name
+        self.last_time_sig = self.sequencer.current_time_sig
         
         try:
             # Clear existing image buffer
@@ -634,6 +681,13 @@ class OLEDHandler:
                     
                     # Draw thumb (filled portion representing current bank)
                     self.draw.rectangle((int(thumb_position), 40, int(thumb_position + thumb_width), 44), fill=1)
+
+            elif self.sequencer.mode == 'TIMESIG':
+                self.image.paste(self.icon_time, (icon_xoffset, 6))
+                # Display current time signature label
+                self.draw.text((value_xoffset, 0), self.sequencer.current_time_sig, font=self.font_large, fill=255)
+                # Draw proportional step-duration bars (80px wide)
+                self._draw_step_duration_bars(y_top=38, bar_total_width=80)
 
             self.device.display(self.image)
             
@@ -862,7 +916,7 @@ class Sequencer:
         self.bpm = bpm
         self.volume = 0.1  # Default volume 10%
         self.distortion = 0.0  # Distortion amount 0.0-1.0
-        self.modes = ['BPM', 'VOL', 'DIST', 'BANK']
+        self.modes = ['BPM', 'VOL', 'DIST', 'BANK', 'TIMESIG']
         self.mode_idx = 0
         self.mode = self.modes[self.mode_idx]
         
@@ -875,6 +929,10 @@ class Sequencer:
         self.current_bank_idx = 0
         self.current_bank_name = ""
         self.sample_banks = {}  # Dictionary: {bank_name: {instrument_name: [samples]}}
+        
+        # Time signature management
+        self.current_time_sig_idx = 0
+        self.current_time_sig = TIME_SIG_NAMES[0]  # default: '4/4'
         
         self.active_voices = []  # List of currently playing samples
         self.lock = threading.Lock()
@@ -975,6 +1033,12 @@ class Sequencer:
         self.current_bank_idx = (self.current_bank_idx + direction) % len(self.bank_names)
         self.current_bank_name = self.bank_names[self.current_bank_idx]
         print(f"Switched to bank: {self.current_bank_name}")
+    
+    def cycle_time_sig(self, direction):
+        """Switch to the next or previous time signature"""
+        self.current_time_sig_idx = (self.current_time_sig_idx + direction) % len(TIME_SIG_NAMES)
+        self.current_time_sig = TIME_SIG_NAMES[self.current_time_sig_idx]
+        print(f"Time signature: {self.current_time_sig}")
     
     def get_current_samples(self, instrument_name):
         """Get samples for the current bank and instrument"""
@@ -1078,11 +1142,16 @@ class Sequencer:
     def sequencer_thread(self):
         """Main sequencer loop running in separate thread"""
         next_step_time = time.perf_counter()
-        step_duration = 60.0 / self.bpm / 2  # 8th notes
+        eighth_note_duration = 60.0 / self.bpm / 2  # base 8th note duration
         
         while self.is_playing:
+            step = self.current_step
+
+            # Get this step's duration multiplier from the current time signature
+            step_duration = eighth_note_duration * TIME_SIGNATURES[self.current_time_sig][step]
+
             # Trigger samples for current step
-            self.trigger_samples(self.current_step)
+            self.trigger_samples(step)
             
             # Advance step
             self.current_step = (self.current_step + 1) % NUM_STEPS
@@ -1098,8 +1167,8 @@ class Sequencer:
                 # We're running late, resync
                 next_step_time = time.perf_counter()
             
-            # Update step duration if BPM changed
-            step_duration = 60.0 / self.bpm / 2
+            # Update base 8th note duration if BPM changed
+            eighth_note_duration = 60.0 / self.bpm / 2
     
     def start(self):
         """Start playback"""
