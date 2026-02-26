@@ -247,6 +247,10 @@ class RotaryEncoder:
     
     def _handle_rotation(self, direction):
         """Process rotation in a given direction"""
+        # Ignore encoder input when paused to avoid hidden changes
+        if not self.sequencer.is_playing:
+            return
+        
         try:
             if self.sequencer.mode == 'BPM':
                 new_bpm = self.sequencer.bpm + direction * self.bpm_step
