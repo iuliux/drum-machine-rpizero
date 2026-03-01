@@ -1,8 +1,8 @@
 # Setup
 
-## 1. Flash Raspberry Pi OS Lite (64-bit)
+### 1. Flash Raspberry Pi OS Lite (64-bit)
 
-## 2. Configure I2S
+### 2. Configure I2S
 
 Add line to `/boot/firmware/config.txt`:
 
@@ -12,7 +12,7 @@ dtoverlay=hifiberry-dac
 
 This configures the I2S pins (BCM 18, 19, 21 for BCLK, LRCLK, DATA).
 
-## 3. Install dependencies
+### 3. Install dependencies
 
 ```
 sudo apt update
@@ -30,14 +30,14 @@ cd drum-machine-rpizero/
 sudo pip install -r requirements.txt --break-system-packages
 ```
 
-## 4. Run (and update) on startup
+### 4. Run (and update) on startup
 
 ```
 chmod +x /home/pi/drum-machine-rpizero/scripts/setup-service.sh
 sudo sh /home/pi/drum-machine-rpizero/scripts/setup-service.sh
 ```
 
-## 5. System optimizations
+### 5. System optimizations
 
 ```
 # Disable Bluetooth
