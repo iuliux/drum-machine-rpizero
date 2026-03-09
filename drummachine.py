@@ -697,7 +697,7 @@ class OLEDHandler:
             elif self.sequencer.mode == 'TIMESIG':
                 self.image.paste(self.icon_time, (icon_xoffset, 6))
                 # Display current time signature label
-                self.draw.text((value_xoffset, 0), self.sequencer.current_time_sig, font=self.font_large, fill=255)
+                self.draw.text((value_xoffset, 0), self.sequencer.current_time_sig, font=self.font_medium, fill=255)
                 # Draw proportional step-duration bars (80px wide)
                 self._draw_step_duration_bars(y_top=38, bar_total_width=80)
 
