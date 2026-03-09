@@ -132,8 +132,8 @@ TIME_SIGNATURES = {
     # 3-rhythm hits at bar thirds:    0, 8/3, 16/3
     # Combined 6 hits plus the 2nd and last 8th notes (pos 1, 7) = 8 steps.
     # Durations: [1, 1, 2/3, 4/3, 4/3, 2/3, 1, 1] — symmetric, sum = 8.
-    'TRES': [1.0, 1.0, 2/3, 4/3, 4/3, 2/3, 1.0, 1.0],
-    'DRNK': [1.5, 1.5, 5/6, 5/6, 5/6, 5/6, 5/6, 5/6],
+    'TRESILLO': [1.0, 1.0, 2/3, 4/3, 4/3, 2/3, 1.0, 1.0],
+    'DRUNK': [1.5, 1.5, 5/6, 5/6, 5/6, 5/6, 5/6, 5/6],
 }
 TIME_SIG_NAMES = list(TIME_SIGNATURES.keys())
 
@@ -697,7 +697,7 @@ class OLEDHandler:
             elif self.sequencer.mode == 'TIMESIG':
                 self.image.paste(self.icon_time, (icon_xoffset, 6))
                 # Display current time signature label
-                self.draw.text((value_xoffset, 0), self.sequencer.current_time_sig, font=self.font_medium, fill=255)
+                self.draw.text((value_xoffset, 10), self.sequencer.current_time_sig, font=self.font_medium, fill=255)
                 # Draw proportional step-duration bars (80px wide)
                 self._draw_step_duration_bars(y_top=38, bar_total_width=80)
 
