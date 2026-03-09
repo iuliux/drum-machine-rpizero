@@ -115,6 +115,8 @@ COLORS = {
 # All multipliers sum to 8.0 so every pattern occupies the same bar length.
 #
 # 4/4       - straight: 8 equal 8th notes
+# Swing     - triplet feel: on-beats (steps 0,2,4,6) take 1.5x, off-beats 
+#             (steps 1,3,5,7) take 0.5x, creating classic swing rhythm
 # 3/4 + 5/4 - two-bar hybrid: first 3 steps fill a 3/4 bar (each = 4/3 of an
 #             8th note), next 5 steps fill a 5/4 bar (each = 4/5 of an 8th note)
 # Tresillo  - 3-3-2 clave feel doubled across the bar: raw durations
@@ -123,6 +125,7 @@ COLORS = {
 #             16th triplets (×5/6 each); sum = 3.0 + 5.0 = 8.0
 TIME_SIGNATURES = {
     '4/4':  [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+    'SWING': [1.5, 0.5, 1.5, 0.5, 1.5, 0.5, 1.5, 0.5],
     '3+5':  [4/3, 4/3, 4/3, 4/5, 4/5, 4/5, 4/5, 4/5],
     # 3-against-4 polyrhythm with passing 8th notes.
     # 4-rhythm hits at quarter notes: 0, 2, 4, 6
