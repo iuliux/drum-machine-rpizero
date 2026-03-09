@@ -132,7 +132,7 @@ TIME_SIGNATURES = {
     # 3-rhythm hits at bar thirds:    0, 8/3, 16/3
     # Combined 6 hits plus the 2nd and last 8th notes (pos 1, 7) = 8 steps.
     # Durations: [1, 1, 2/3, 4/3, 4/3, 2/3, 1, 1] — symmetric, sum = 8.
-    'TRESILLO': [1.0, 1.0, 2/3, 4/3, 4/3, 2/3, 1.0, 1.0],
+    'TRESLL': [1.0, 1.0, 2/3, 4/3, 4/3, 2/3, 1.0, 1.0],
     'DRUNK': [1.5, 1.5, 5/6, 5/6, 5/6, 5/6, 5/6, 5/6],
 }
 TIME_SIG_NAMES = list(TIME_SIGNATURES.keys())
