@@ -404,16 +404,16 @@ class LEDHandler:
         """
         Map instrument and step to LED index.
         Physical layout (daisy-chained serpentine):
-        - Row 0 (Kick):   LEDs 0-7   (left to right)
+        - Row 0 (Hihat):  LEDs 0-7   (left to right)
         - Row 1 (Snare):  LEDs 15-8  (right to left, reversed)
-        - Row 2 (Hihat):  LEDs 16-23 (left to right)
+        - Row 2 (Kick):   LEDs 16-23 (left to right)
         """
-        if instrument_idx == 0:  # Kick: left to right
-            return step_idx
+        if instrument_idx == 0:  # Kick: left to right (bottom row)
+            return 16 + step_idx
         elif instrument_idx == 1:  # Snare: right to left (reversed)
             return 15 - step_idx
-        elif instrument_idx == 2:  # Hihat: left to right
-            return 16 + step_idx
+        elif instrument_idx == 2:  # Hihat: left to right (top row)
+            return step_idx
         else:
             return 0  # Fallback
     
@@ -843,23 +843,23 @@ class TouchHandler:
         
         Layout (Left/Right Split):
         Sensor 2 (0x5B) - Left Half (steps 0-3):
-          Pads 0-3: Kick steps 0-3
+          Pads 0-3: Hihat steps 0-3
           Pads 4-7: Snare steps 0-3
-          Pads 8-11: Hihat steps 0-3
+          Pads 8-11: Kick steps 0-3
         Sensor 1 (0x5A) - Right Half (steps 4-7):
-          Pads 0-3: Kick steps 4-7
+          Pads 0-3: Hihat steps 4-7
           Pads 4-7: Snare steps 4-7
-          Pads 8-11: Hihat steps 4-7
+          Pads 8-11: Kick steps 4-7
         """
         # Determine instrument from pad number (same for both sensors)
         if pad_num < 4:
-            instrument = 0  # Kick
+            instrument = 2  # Hihat
             pad_step = pad_num
         elif pad_num < 8:
             instrument = 1  # Snare
             pad_step = pad_num - 4
         else:  # pad_num < 12
-            instrument = 2  # Hihat
+            instrument = 0  # Kick
             pad_step = pad_num - 8
         
         # Add sensor offset (4 for sensor 1 [right], 0 for sensor 2 [left])
