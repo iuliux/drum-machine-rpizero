@@ -91,7 +91,7 @@ sudo python drummachine.py
 - Raspberry Pi Zero 2 W
 - PCM5102A I2S DAC
 - KY-040 Rotary Encoder
-- 2.4" 128x64 OLED Display Module (SSD1309)
+- 1.3" 128x64 OLED Display Module (SSD1309)
 - MPR121 12-Button Capacitive Touch Sensor (2 of them)
 - 24 x WS2812b LEDs (on a 30 LEDs/m strip, cut in 3 pieces of 8 LEDs)
 - 8 x WS2812b LEDs on a 5mm wide strip (optional, for edge lighting)
