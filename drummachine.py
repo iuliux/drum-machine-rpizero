@@ -546,15 +546,9 @@ class OLEDHandler:
                 self.font_medium = ImageFont.truetype("./fonts/SpaceMono-Bold.ttf", 20)
                 self.font_small = ImageFont.truetype("./fonts/m42.TTF", 8)
             except:
-                try:
-                    # Fallback to DejaVu Sans Bold
-                    self.font_large = ImageFont.truetype("/usr/share/fonts/truetype/freefont/FreeSansBold.ttf", 32)
-                    self.font_medium = ImageFont.truetype("/usr/share/fonts/truetype/freefont/FreeSansBold.ttf", 18)
-                    self.font_small = ImageFont.truetype("/usr/share/fonts/truetype/freefont/FreeSansBold.ttf", 11)
-                except:
-                    self.font_large = ImageFont.load_default()
-                    self.font_medium = ImageFont.load_default()
-                    self.font_small = ImageFont.load_default()
+                self.font_large = ImageFont.load_default()
+                self.font_medium = ImageFont.load_default()
+                self.font_small = ImageFont.load_default()
             
             # Clear display
             self.device.clear()
