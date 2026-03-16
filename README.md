@@ -1,4 +1,4 @@
-<img src="docs/drumsick.png" alt="splash" width="200">
+<img src="docs/drumsick.png" alt="splash" width="128px">
 
 # Drum Sick - 8-step drum sequencer
 
