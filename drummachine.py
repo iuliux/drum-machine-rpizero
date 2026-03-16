@@ -205,6 +205,10 @@ class RotaryEncoder:
         self.long_press_triggered = False
         self.LONG_PRESS_THRESHOLD = 0.6  # seconds
         
+        # Mode selection menu state
+        self.in_mode_selection = False
+        self.selected_mode_idx = 0
+        
         if not GPIOZERO_AVAILABLE:
             print("Rotary encoder disabled - gpiozero not available")
             return
@@ -250,6 +254,11 @@ class RotaryEncoder:
     
     def _handle_rotation(self, direction):
         """Process rotation in a given direction"""
+        # If in mode selection menu, navigate modes instead of changing values
+        if self.in_mode_selection:
+            self.selected_mode_idx = (self.selected_mode_idx + direction) % len(self.sequencer.modes)
+            return
+        
         # Ignore encoder input when paused to avoid hidden changes
         if not self.sequencer.is_playing:
             return
@@ -286,19 +295,27 @@ class RotaryEncoder:
         self.button_pressed = False
         # If we released and haven't triggered long press yet, it's a short press
         if not self.long_press_triggered:
-            # Short Press: Toggle Play/Stop
-            if self.sequencer.is_playing:
-                self.sequencer.stop()
+            # In mode selection menu: confirm selection
+            if self.in_mode_selection:
+                self.sequencer.mode_idx = self.selected_mode_idx
+                self.sequencer.mode = self.sequencer.modes[self.selected_mode_idx]
+                self.in_mode_selection = False
+                print(f"Mode switched to: {self.sequencer.mode}")
+            # Normal operation: Toggle Play/Stop
             else:
-                self.sequencer.start()
+                if self.sequencer.is_playing:
+                    self.sequencer.stop()
+                else:
+                    self.sequencer.start()
     
     def _button_held(self):
         """Called when button has been held for hold_time"""
         if not self.long_press_triggered:
             self.long_press_triggered = True
-            # Switch modes
-            self.sequencer.cycle_mode()
-            print(f"Mode switched to: {self.sequencer.mode}")
+            # Enter mode selection menu
+            self.in_mode_selection = True
+            self.selected_mode_idx = self.sequencer.mode_idx
+            print("Entering mode selection menu")
     
     def cleanup(self):
         """Clean up GPIO resources"""
@@ -476,6 +493,7 @@ class OLEDHandler:
         self.last_dist = -1
         self.last_bank = ""
         self.last_time_sig = ""
+        self.last_in_menu = False
 
         self.MODES = {
             'BPM': 'TEMPO',
@@ -583,11 +601,43 @@ class OLEDHandler:
             is_current = self.sequencer.is_playing and (i == display_step)
             self.draw.rectangle((x, y_top, x + w - 1, y_top + bar_height), outline=1, fill=(1 if is_current else 0))
             x += w + GAP
+    
+    def _draw_mode_selection_menu(self):
+        """Draw mode selection menu when encoder is in selection mode"""
+        # Get the selected index from encoder
+        if not hasattr(self.sequencer, 'encoder'):
+            return
+        selected_idx = self.sequencer.encoder.selected_mode_idx if hasattr(self.sequencer.encoder, 'selected_mode_idx') else 0
+        
+        # Title
+        self.draw.text((10, 5), "SELECT MODE", font=self.font_medium, fill=255)
+        
+        # Draw each mode as a selectable option
+        y_pos = 25
+        line_height = 13
+        
+        for i, mode_name in enumerate(self.sequencer.modes):
+            mode_label = self.MODES.get(mode_name, mode_name)
+            
+            if i == selected_idx:
+                # Highlight selected mode with inverse video
+                self.draw.rectangle((5, y_pos - 2, 123, y_pos + 10), fill=1)
+                self.draw.text((10, y_pos), mode_label, font=self.font_small, fill=0)  # Black text on white
+            else:
+                # Normal mode
+                self.draw.text((10, y_pos), mode_label, font=self.font_small, fill=255)
+            
+            y_pos += line_height
+            if y_pos > 60:  # Don't draw beyond screen
+                break
 
     def update(self):
         """Update OLED display with current BPM and status"""
         if self.device is None:
             return
+        
+        # Check if encoder is in mode selection menu
+        encoder_in_menu = self.sequencer.encoder.in_mode_selection if hasattr(self.sequencer, 'encoder') and hasattr(self.sequencer.encoder, 'in_mode_selection') else False
         
         # Update logic: Redraw if mode, bpm, volume, distortion, or bank changes, OR every 20th frame (heartbeat)
         state_changed = (self.sequencer.bpm != self.last_bpm or 
@@ -595,7 +645,8 @@ class OLEDHandler:
                          self.sequencer.volume != self.last_vol or
                          self.sequencer.distortion != self.last_dist or
                          self.sequencer.current_bank_name != self.last_bank or
-                         self.sequencer.current_time_sig != self.last_time_sig)
+                         self.sequencer.current_time_sig != self.last_time_sig or
+                         encoder_in_menu != self.last_in_menu)
         
         self.update_counter += 1
         if not state_changed and self.update_counter < 20:
@@ -608,10 +659,17 @@ class OLEDHandler:
         self.last_dist = self.sequencer.distortion
         self.last_bank = self.sequencer.current_bank_name
         self.last_time_sig = self.sequencer.current_time_sig
+        self.last_in_menu = encoder_in_menu
         
         try:
             # Clear existing image buffer
             self.draw.rectangle((0, 0, OLED_WIDTH, OLED_HEIGHT), fill=0)
+            
+            # Display mode selection menu if active
+            if encoder_in_menu:
+                self._draw_mode_selection_menu()
+                self.device.display(self.image)
+                return
             
             # Define constants for layout
             value_xoffset = 46
@@ -1243,6 +1301,7 @@ def main():
     
     # Initialize rotary encoder (gpiozero handles its own GPIO setup)
     encoder = RotaryEncoder(seq)
+    seq.encoder = encoder  # Store reference for OLED to access menu state
     log_time("Encoder initialized")
     
     # Set up a simple test pattern (for testing without touch sensors)
