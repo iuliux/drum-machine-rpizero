@@ -620,11 +620,11 @@ class OLEDHandler:
             
             if i == selected_idx:
                 # Highlight selected mode with inverse video
-                self.draw.rectangle((5, y_pos - 2, 123, y_pos + 10), fill=1)
-                self.draw.text((10, y_pos), mode_label, font=self.font_tiny, fill=0)  # Black text on white
+                self.draw.rectangle((5, y_pos + 2, 120, y_pos + 12), fill=1)
+                self.draw.text((16, y_pos), mode_label, font=self.font_tiny, fill=0)  # Black text on white
             else:
                 # Normal mode
-                self.draw.text((10, y_pos), mode_label, font=self.font_tiny, fill=255)
+                self.draw.text((16, y_pos), mode_label, font=self.font_tiny, fill=255)
             
             y_pos += line_height
             if y_pos > 60:  # Don't draw beyond screen
