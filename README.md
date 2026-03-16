@@ -1,3 +1,5 @@
+<img src="docs/drumsick.png" alt="splash" width="200">
+
 # Drum Sick - 8-step drum sequencer
 
 A drum sequencer meant to be straight forward to use as to function as a kid's toy, but fun and versatile enough as to be fun for a parent.
