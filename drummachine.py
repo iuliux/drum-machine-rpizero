@@ -563,10 +563,12 @@ class OLEDHandler:
                 self.font_large = ImageFont.truetype("./fonts/SpaceMono-Bold.ttf", 32)
                 self.font_medium = ImageFont.truetype("./fonts/SpaceMono-Bold.ttf", 20)
                 self.font_small = ImageFont.truetype("./fonts/m42.TTF", 8)
+                self.font_tiny = ImageFont.truetype("./fonts/SpaceMono-Bold.ttf", 8)
             except:
                 self.font_large = ImageFont.load_default()
                 self.font_medium = ImageFont.load_default()
                 self.font_small = ImageFont.load_default()
+                self.font_tiny = ImageFont.load_default()
             
             # Clear display
             self.device.clear()
@@ -609,12 +611,9 @@ class OLEDHandler:
             return
         selected_idx = self.sequencer.encoder.selected_mode_idx if hasattr(self.sequencer.encoder, 'selected_mode_idx') else 0
         
-        # Title
-        self.draw.text((10, 5), "SELECT MODE", font=self.font_medium, fill=255)
-        
         # Draw each mode as a selectable option
-        y_pos = 25
-        line_height = 13
+        y_pos = 5
+        line_height = 10
         
         for i, mode_name in enumerate(self.sequencer.modes):
             mode_label = self.MODES.get(mode_name, mode_name)
@@ -622,10 +621,10 @@ class OLEDHandler:
             if i == selected_idx:
                 # Highlight selected mode with inverse video
                 self.draw.rectangle((5, y_pos - 2, 123, y_pos + 10), fill=1)
-                self.draw.text((10, y_pos), mode_label, font=self.font_small, fill=0)  # Black text on white
+                self.draw.text((10, y_pos), mode_label, font=self.font_tiny, fill=0)  # Black text on white
             else:
                 # Normal mode
-                self.draw.text((10, y_pos), mode_label, font=self.font_small, fill=255)
+                self.draw.text((10, y_pos), mode_label, font=self.font_tiny, fill=255)
             
             y_pos += line_height
             if y_pos > 60:  # Don't draw beyond screen
