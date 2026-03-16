@@ -439,11 +439,13 @@ class LEDHandler:
                     is_current = (step_idx == display_step) and self.sequencer.is_playing
                     
                     if is_current and is_active:
-                        # Current step that's active: full brightness white
-                        self.pixels[pixel_idx] = COLORS['current']
+                        # Current step that's active: blend instrument color towards white (70% color, 30% white)
+                        blend_factor = 0.3
+                        color = tuple(int(c * (1 - blend_factor) + 255 * blend_factor) for c in base_color)
+                        self.pixels[pixel_idx] = color
                     elif is_current:
-                        # Current step but inactive: dim white
-                        self.pixels[pixel_idx] = tuple(min(255, c + 100) for c in COLORS['current'])
+                        # Current step but inactive: dim white (not full brightness)
+                        self.pixels[pixel_idx] = (120, 120, 120)
                     elif is_active:
                         # Active step: instrument color at medium brightness
                         self.pixels[pixel_idx] = base_color
