@@ -563,7 +563,7 @@ class OLEDHandler:
                 self.font_large = ImageFont.truetype("./fonts/SpaceMono-Bold.ttf", 32)
                 self.font_medium = ImageFont.truetype("./fonts/SpaceMono-Bold.ttf", 20)
                 self.font_small = ImageFont.truetype("./fonts/m42.TTF", 8)
-                self.font_tiny = ImageFont.truetype("./fonts/SpaceMono-Bold.ttf", 8)
+                self.font_tiny = ImageFont.truetype("./fonts/SpaceMono-Bold.ttf", 10)
             except:
                 self.font_large = ImageFont.load_default()
                 self.font_medium = ImageFont.load_default()
@@ -613,7 +613,7 @@ class OLEDHandler:
         
         # Draw each mode as a selectable option
         y_pos = 5
-        line_height = 10
+        line_height = 12
         
         for i, mode_name in enumerate(self.sequencer.modes):
             mode_label = self.MODES.get(mode_name, mode_name)
