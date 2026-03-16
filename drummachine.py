@@ -219,7 +219,7 @@ class RotaryEncoder:
             self.encoder = GPIOZeroRotaryEncoder(
                 a=clk_pin,
                 b=dt_pin,
-                bounce_time=0.002  # 2ms debounce window for better responsiveness
+                bounce_time=0.001  # 1ms debounce window for better responsiveness
             )
             
             # Set up rotation event handlers
