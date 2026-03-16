@@ -613,7 +613,7 @@ class OLEDHandler:
         
         # Draw each mode as a selectable option
         y_pos = 5
-        line_height = 12
+        line_height = 11
         
         for i, mode_name in enumerate(self.sequencer.modes):
             mode_label = self.MODES.get(mode_name, mode_name)
